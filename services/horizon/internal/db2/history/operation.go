@@ -44,19 +44,19 @@ func (r *Operation) UnmarshalDetails(dest interface{}) error {
 func (q *Q) FeeStats(currentSeq int32, dest *FeeStats) error {
 	return q.GetRaw(dest, `
 		SELECT
-			ceil(min(max_fee/operation_count))::bigint AS "min",
-			ceil(mode() within group (order by max_fee/operation_count))::bigint AS "mode",
-			ceil(percentile_disc(0.10) WITHIN GROUP (ORDER BY max_fee/operation_count))::bigint AS "p10",
-			ceil(percentile_disc(0.20) WITHIN GROUP (ORDER BY max_fee/operation_count))::bigint AS "p20",
-			ceil(percentile_disc(0.30) WITHIN GROUP (ORDER BY max_fee/operation_count))::bigint AS "p30",
-			ceil(percentile_disc(0.40) WITHIN GROUP (ORDER BY max_fee/operation_count))::bigint AS "p40",
-			ceil(percentile_disc(0.50) WITHIN GROUP (ORDER BY max_fee/operation_count))::bigint AS "p50",
-			ceil(percentile_disc(0.60) WITHIN GROUP (ORDER BY max_fee/operation_count))::bigint AS "p60",
-			ceil(percentile_disc(0.70) WITHIN GROUP (ORDER BY max_fee/operation_count))::bigint AS "p70",
-			ceil(percentile_disc(0.80) WITHIN GROUP (ORDER BY max_fee/operation_count))::bigint AS "p80",
-			ceil(percentile_disc(0.90) WITHIN GROUP (ORDER BY max_fee/operation_count))::bigint AS "p90",
-			ceil(percentile_disc(0.95) WITHIN GROUP (ORDER BY max_fee/operation_count))::bigint AS "p95",
-			ceil(percentile_disc(0.99) WITHIN GROUP (ORDER BY max_fee/operation_count))::bigint AS "p99"
+			ceil(min(max_fee/operation_count))::bigint AS "max_fee_min",
+			ceil(mode() within group (order by max_fee/operation_count))::bigint AS "max_fee_mode",
+			ceil(percentile_disc(0.10) WITHIN GROUP (ORDER BY max_fee/operation_count))::bigint AS "max_fee_p10",
+			ceil(percentile_disc(0.20) WITHIN GROUP (ORDER BY max_fee/operation_count))::bigint AS "max_fee_p20",
+			ceil(percentile_disc(0.30) WITHIN GROUP (ORDER BY max_fee/operation_count))::bigint AS "max_fee_p30",
+			ceil(percentile_disc(0.40) WITHIN GROUP (ORDER BY max_fee/operation_count))::bigint AS "max_fee_p40",
+			ceil(percentile_disc(0.50) WITHIN GROUP (ORDER BY max_fee/operation_count))::bigint AS "max_fee_p50",
+			ceil(percentile_disc(0.60) WITHIN GROUP (ORDER BY max_fee/operation_count))::bigint AS "max_fee_p60",
+			ceil(percentile_disc(0.70) WITHIN GROUP (ORDER BY max_fee/operation_count))::bigint AS "max_fee_p70",
+			ceil(percentile_disc(0.80) WITHIN GROUP (ORDER BY max_fee/operation_count))::bigint AS "max_fee_p80",
+			ceil(percentile_disc(0.90) WITHIN GROUP (ORDER BY max_fee/operation_count))::bigint AS "max_fee_p90",
+			ceil(percentile_disc(0.95) WITHIN GROUP (ORDER BY max_fee/operation_count))::bigint AS "max_fee_p95",
+			ceil(percentile_disc(0.99) WITHIN GROUP (ORDER BY max_fee/operation_count))::bigint AS "max_fee_p99"
 		FROM history_transactions
 		WHERE ledger_sequence > $1 AND ledger_sequence <= $2
 	`, currentSeq-5, currentSeq)

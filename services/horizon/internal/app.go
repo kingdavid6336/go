@@ -261,7 +261,7 @@ func (a *App) UpdateFeeStatsState() {
 
 	// if no transactions in last 5 ledgers, return
 	// latest ledger's base fee for all
-	if !feeStats.Mode.Valid && !feeStats.Min.Valid {
+	if !feeStats.MaxFeeMode.Valid && !feeStats.MaxFeeMin.Valid {
 		next.FeeMin = next.LastBaseFee
 		next.FeeMode = next.LastBaseFee
 		next.FeeP10 = next.LastBaseFee
@@ -276,19 +276,19 @@ func (a *App) UpdateFeeStatsState() {
 		next.FeeP95 = next.LastBaseFee
 		next.FeeP99 = next.LastBaseFee
 	} else {
-		next.FeeMin = feeStats.Min.Int64
-		next.FeeMode = feeStats.Mode.Int64
-		next.FeeP10 = feeStats.P10.Int64
-		next.FeeP20 = feeStats.P20.Int64
-		next.FeeP30 = feeStats.P30.Int64
-		next.FeeP40 = feeStats.P40.Int64
-		next.FeeP50 = feeStats.P50.Int64
-		next.FeeP60 = feeStats.P60.Int64
-		next.FeeP70 = feeStats.P70.Int64
-		next.FeeP80 = feeStats.P80.Int64
-		next.FeeP90 = feeStats.P90.Int64
-		next.FeeP95 = feeStats.P95.Int64
-		next.FeeP99 = feeStats.P99.Int64
+		next.FeeMin = feeStats.MaxFeeMin.Int64
+		next.FeeMode = feeStats.MaxFeeMode.Int64
+		next.FeeP10 = feeStats.MaxFeeP10.Int64
+		next.FeeP20 = feeStats.MaxFeeP20.Int64
+		next.FeeP30 = feeStats.MaxFeeP30.Int64
+		next.FeeP40 = feeStats.MaxFeeP40.Int64
+		next.FeeP50 = feeStats.MaxFeeP50.Int64
+		next.FeeP60 = feeStats.MaxFeeP60.Int64
+		next.FeeP70 = feeStats.MaxFeeP70.Int64
+		next.FeeP80 = feeStats.MaxFeeP80.Int64
+		next.FeeP90 = feeStats.MaxFeeP90.Int64
+		next.FeeP95 = feeStats.MaxFeeP95.Int64
+		next.FeeP99 = feeStats.MaxFeeP99.Int64
 	}
 
 	operationfeestats.SetState(next)
