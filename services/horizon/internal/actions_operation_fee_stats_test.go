@@ -2,84 +2,85 @@ package horizon
 
 import (
 	"encoding/json"
+	hProtocol "github.com/stellar/go/protocols/horizon"
 	"testing"
 )
 
 func TestOperationFeeTestsActions_Show(t *testing.T) {
 	testCases := []struct {
 		scenario            string
-		lastbasefee         string
-		min                 string
-		mode                string
-		p10                 string
-		p20                 string
-		p30                 string
-		p40                 string
-		p50                 string
-		p60                 string
-		p70                 string
-		p80                 string
-		p90                 string
-		p95                 string
-		p99                 string
-		ledgerCapacityUsage string
+		lastbasefee         int
+		min                 int
+		mode                int
+		p10                 int
+		p20                 int
+		p30                 int
+		p40                 int
+		p50                 int
+		p60                 int
+		p70                 int
+		p80                 int
+		p90                 int
+		p95                 int
+		p99                 int
+		ledgerCapacityUsage float64
 	}{
 		// happy path
 		{
 			scenario:            "operation_fee_stats_1",
-			lastbasefee:         "100",
-			min:                 "100",
-			mode:                "100",
-			p10:                 "100",
-			p20:                 "100",
-			p30:                 "100",
-			p40:                 "100",
-			p50:                 "100",
-			p60:                 "100",
-			p70:                 "100",
-			p80:                 "100",
-			p90:                 "100",
-			p95:                 "100",
-			p99:                 "100",
-			ledgerCapacityUsage: "0.04",
+			lastbasefee:         100,
+			min:                 100,
+			mode:                100,
+			p10:                 100,
+			p20:                 100,
+			p30:                 100,
+			p40:                 100,
+			p50:                 100,
+			p60:                 100,
+			p70:                 100,
+			p80:                 100,
+			p90:                 100,
+			p95:                 100,
+			p99:                 100,
+			ledgerCapacityUsage: 0.04,
 		},
 		// no transactions in last 5 ledgers
 		{
 			scenario:            "operation_fee_stats_2",
-			lastbasefee:         "100",
-			min:                 "100",
-			mode:                "100",
-			p10:                 "100",
-			p20:                 "100",
-			p30:                 "100",
-			p40:                 "100",
-			p50:                 "100",
-			p60:                 "100",
-			p70:                 "100",
-			p80:                 "100",
-			p90:                 "100",
-			p95:                 "100",
-			p99:                 "100",
-			ledgerCapacityUsage: "0.00",
+			lastbasefee:         100,
+			min:                 100,
+			mode:                100,
+			p10:                 100,
+			p20:                 100,
+			p30:                 100,
+			p40:                 100,
+			p50:                 100,
+			p60:                 100,
+			p70:                 100,
+			p80:                 100,
+			p90:                 100,
+			p95:                 100,
+			p99:                 100,
+			ledgerCapacityUsage: 0.00,
 		},
 		// transactions with varying fees
 		{
 			scenario:            "operation_fee_stats_3",
-			lastbasefee:         "100",
-			min:                 "200",
-			mode:                "400",
-			p10:                 "200",
-			p20:                 "300",
-			p30:                 "400",
-			p40:                 "400",
-			p50:                 "400",
-			p60:                 "400",
-			p70:                 "400",
-			p80:                 "400",
-			p90:                 "400",
-			p95:                 "400",
-			p99:                 "400",
-			ledgerCapacityUsage: "0.03",
+			lastbasefee:         100,
+			min:                 200,
+			mode:                400,
+			p10:                 200,
+			p20:                 300,
+			p30:                 400,
+			p40:                 400,
+			p50:                 400,
+			p60:                 400,
+			p70:                 400,
+			p80:                 400,
+			p90:                 400,
+			p95:                 400,
+			p99:                 400,
+			ledgerCapacityUsage: 0.03,
 		},
 	}
 
@@ -97,24 +98,24 @@ func TestOperationFeeTestsActions_Show(t *testing.T) {
 			w := ht.Get("/fee_stats")
 
 			if ht.Assert.Equal(200, w.Code) {
-				var result map[string]string
+				var result hProtocol.FeeStats
 				err := json.Unmarshal(w.Body.Bytes(), &result)
 				ht.Require.NoError(err)
-				ht.Assert.Equal(kase.min, result["min_accepted_fee"], "min")
-				ht.Assert.Equal(kase.mode, result["mode_accepted_fee"], "mode")
-				ht.Assert.Equal(kase.lastbasefee, result["last_ledger_base_fee"], "base_fee")
-				ht.Assert.Equal(kase.p10, result["p10_accepted_fee"], "p10")
-				ht.Assert.Equal(kase.p20, result["p20_accepted_fee"], "p20")
-				ht.Assert.Equal(kase.p30, result["p30_accepted_fee"], "p30")
-				ht.Assert.Equal(kase.p40, result["p40_accepted_fee"], "p40")
-				ht.Assert.Equal(kase.p50, result["p50_accepted_fee"], "p50")
-				ht.Assert.Equal(kase.p60, result["p60_accepted_fee"], "p60")
-				ht.Assert.Equal(kase.p70, result["p70_accepted_fee"], "p70")
-				ht.Assert.Equal(kase.p80, result["p80_accepted_fee"], "p80")
-				ht.Assert.Equal(kase.p90, result["p90_accepted_fee"], "p90")
-				ht.Assert.Equal(kase.p95, result["p95_accepted_fee"], "p95")
-				ht.Assert.Equal(kase.p99, result["p99_accepted_fee"], "p99")
-				ht.Assert.Equal(kase.ledgerCapacityUsage, result["ledger_capacity_usage"], "ledger_capacity_usage")
+				ht.Assert.Equal(kase.lastbasefee, result.LastLedgerBaseFee, "base_fee")
+				ht.Assert.Equal(kase.min, result.MinAcceptedFee, "min")
+				ht.Assert.Equal(kase.mode, result.ModeAcceptedFee, "mode")
+				ht.Assert.Equal(kase.p10, result.P10AcceptedFee, "p10")
+				ht.Assert.Equal(kase.p20, result.P20AcceptedFee, "p20")
+				ht.Assert.Equal(kase.p30, result.P30AcceptedFee, "p30")
+				ht.Assert.Equal(kase.p40, result.P40AcceptedFee, "p40")
+				ht.Assert.Equal(kase.p50, result.P50AcceptedFee, "p50")
+				ht.Assert.Equal(kase.p60, result.P60AcceptedFee, "p60")
+				ht.Assert.Equal(kase.p70, result.P70AcceptedFee, "p70")
+				ht.Assert.Equal(kase.p80, result.P80AcceptedFee, "p80")
+				ht.Assert.Equal(kase.p90, result.P90AcceptedFee, "p90")
+				ht.Assert.Equal(kase.p95, result.P95AcceptedFee, "p95")
+				ht.Assert.Equal(kase.p99, result.P99AcceptedFee, "p99")
+				ht.Assert.Equal(kase.ledgerCapacityUsage, result.LedgerCapacityUsage, "ledger_capacity_usage")
 			}
 		})
 	}
@@ -139,24 +140,24 @@ func TestOperationFeeTestsActions_ShowMultiOp(t *testing.T) {
 	w := ht.Get("/fee_stats")
 
 	if ht.Assert.Equal(200, w.Code) {
-		var result map[string]string
+		var result hProtocol.FeeStats
 		err := json.Unmarshal(w.Body.Bytes(), &result)
 		ht.Require.NoError(err)
-		ht.Assert.Equal("100", result["min_accepted_fee"], "min")
-		ht.Assert.Equal("200", result["mode_accepted_fee"], "mode")
-		ht.Assert.Equal("100", result["last_ledger_base_fee"], "base_fee")
-		ht.Assert.Equal("100", result["p10_accepted_fee"], "p10")
-		ht.Assert.Equal("150", result["p20_accepted_fee"], "p20")
-		ht.Assert.Equal("200", result["p30_accepted_fee"], "p30")
-		ht.Assert.Equal("200", result["p40_accepted_fee"], "p40")
-		ht.Assert.Equal("200", result["p50_accepted_fee"], "p50")
-		ht.Assert.Equal("200", result["p60_accepted_fee"], "p60")
-		ht.Assert.Equal("200", result["p70_accepted_fee"], "p70")
-		ht.Assert.Equal("200", result["p80_accepted_fee"], "p80")
-		ht.Assert.Equal("200", result["p90_accepted_fee"], "p90")
-		ht.Assert.Equal("200", result["p95_accepted_fee"], "p95")
-		ht.Assert.Equal("200", result["p99_accepted_fee"], "p99")
-		ht.Assert.Equal("0.06", result["ledger_capacity_usage"], "ledger_capacity_usage")
+		ht.Assert.Equal(100, result.MinAcceptedFee, "min")
+		ht.Assert.Equal(200, result.ModeAcceptedFee, "mode")
+		ht.Assert.Equal(100, result.LastLedgerBaseFee, "base_fee")
+		ht.Assert.Equal(100, result.P10AcceptedFee, "p10")
+		ht.Assert.Equal(150, result.P20AcceptedFee, "p20")
+		ht.Assert.Equal(200, result.P30AcceptedFee, "p30")
+		ht.Assert.Equal(200, result.P40AcceptedFee, "p40")
+		ht.Assert.Equal(200, result.P50AcceptedFee, "p50")
+		ht.Assert.Equal(200, result.P60AcceptedFee, "p60")
+		ht.Assert.Equal(200, result.P70AcceptedFee, "p70")
+		ht.Assert.Equal(200, result.P80AcceptedFee, "p80")
+		ht.Assert.Equal(200, result.P90AcceptedFee, "p90")
+		ht.Assert.Equal(200, result.P95AcceptedFee, "p95")
+		ht.Assert.Equal(200, result.P99AcceptedFee, "p99")
+		ht.Assert.Equal(0.06, result.LedgerCapacityUsage, "ledger_capacity_usage")
 	}
 }
 
@@ -177,23 +178,23 @@ func TestOperationFeeTestsActions_NotInterpolating(t *testing.T) {
 	w := ht.Get("/fee_stats")
 
 	if ht.Assert.Equal(200, w.Code) {
-		var result map[string]string
+		var result hProtocol.FeeStats
 		err := json.Unmarshal(w.Body.Bytes(), &result)
 		ht.Require.NoError(err)
-		ht.Assert.Equal("200", result["min_accepted_fee"], "min")
-		ht.Assert.Equal("400", result["mode_accepted_fee"], "mode")
-		ht.Assert.Equal("100", result["last_ledger_base_fee"], "base_fee")
-		ht.Assert.Equal("200", result["p10_accepted_fee"], "p10")
-		ht.Assert.Equal("300", result["p20_accepted_fee"], "p20")
-		ht.Assert.Equal("400", result["p30_accepted_fee"], "p30")
-		ht.Assert.Equal("400", result["p40_accepted_fee"], "p40")
-		ht.Assert.Equal("400", result["p50_accepted_fee"], "p50")
-		ht.Assert.Equal("400", result["p60_accepted_fee"], "p60")
-		ht.Assert.Equal("400", result["p70_accepted_fee"], "p70")
-		ht.Assert.Equal("400", result["p80_accepted_fee"], "p80")
-		ht.Assert.Equal("16000", result["p90_accepted_fee"], "p90")
-		ht.Assert.Equal("16000", result["p95_accepted_fee"], "p95")
-		ht.Assert.Equal("16000", result["p99_accepted_fee"], "p99")
-		ht.Assert.Equal("0.09", result["ledger_capacity_usage"], "ledger_capacity_usage")
+		ht.Assert.Equal(200, result.MinAcceptedFee, "min")
+		ht.Assert.Equal(400, result.ModeAcceptedFee, "mode")
+		ht.Assert.Equal(100, result.LastLedgerBaseFee, "base_fee")
+		ht.Assert.Equal(200, result.P10AcceptedFee, "p10")
+		ht.Assert.Equal(300, result.P20AcceptedFee, "p20")
+		ht.Assert.Equal(400, result.P30AcceptedFee, "p30")
+		ht.Assert.Equal(400, result.P40AcceptedFee, "p40")
+		ht.Assert.Equal(400, result.P50AcceptedFee, "p50")
+		ht.Assert.Equal(400, result.P60AcceptedFee, "p60")
+		ht.Assert.Equal(400, result.P70AcceptedFee, "p70")
+		ht.Assert.Equal(400, result.P80AcceptedFee, "p80")
+		ht.Assert.Equal(16000, result.P90AcceptedFee, "p90")
+		ht.Assert.Equal(16000, result.P95AcceptedFee, "p95")
+		ht.Assert.Equal(16000, result.P99AcceptedFee, "p99")
+		ht.Assert.Equal(0.09, result.LedgerCapacityUsage, "ledger_capacity_usage")
 	}
 }
