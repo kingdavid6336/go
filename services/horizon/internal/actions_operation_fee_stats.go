@@ -1,12 +1,13 @@
 package horizon
 
 import (
-	"fmt"
 	"net/http"
+	"strconv"
 
+	hProtocol "github.com/stellar/go/protocols/horizon"
 	"github.com/stellar/go/services/horizon/internal/actions"
 	"github.com/stellar/go/services/horizon/internal/operationfeestats"
-	"github.com/stellar/go/support/render/hal"
+	"github.com/stellar/go/support/render/httpjson"
 	"github.com/stellar/go/support/render/problem"
 )
 
@@ -20,22 +21,7 @@ var _ actions.JSONer = (*FeeStatsAction)(nil)
 // current state of operation fees on the network.
 type FeeStatsAction struct {
 	Action
-	FeeMin              int64
-	FeeMode             int64
-	FeeP10              int64
-	FeeP20              int64
-	FeeP30              int64
-	FeeP40              int64
-	FeeP50              int64
-	FeeP60              int64
-	FeeP70              int64
-	FeeP80              int64
-	FeeP90              int64
-	FeeP95              int64
-	FeeP99              int64
-	LedgerCapacityUsage string
-	LastBaseFee         int64
-	LastLedger          int64
+	FeeStats hProtocol.FeeStats
 }
 
 // JSON is a method for actions.JSON
@@ -57,24 +43,11 @@ func (action *FeeStatsAction) JSON() error {
 	action.Do(
 		action.loadRecords,
 		func() {
-			hal.Render(action.W, map[string]string{
-				"min_accepted_fee":      fmt.Sprint(action.FeeMin),
-				"mode_accepted_fee":     fmt.Sprint(action.FeeMode),
-				"p10_accepted_fee":      fmt.Sprint(action.FeeP10),
-				"p20_accepted_fee":      fmt.Sprint(action.FeeP20),
-				"p30_accepted_fee":      fmt.Sprint(action.FeeP30),
-				"p40_accepted_fee":      fmt.Sprint(action.FeeP40),
-				"p50_accepted_fee":      fmt.Sprint(action.FeeP50),
-				"p60_accepted_fee":      fmt.Sprint(action.FeeP60),
-				"p70_accepted_fee":      fmt.Sprint(action.FeeP70),
-				"p80_accepted_fee":      fmt.Sprint(action.FeeP80),
-				"p90_accepted_fee":      fmt.Sprint(action.FeeP90),
-				"p95_accepted_fee":      fmt.Sprint(action.FeeP95),
-				"p99_accepted_fee":      fmt.Sprint(action.FeeP99),
-				"ledger_capacity_usage": action.LedgerCapacityUsage,
-				"last_ledger_base_fee":  fmt.Sprint(action.LastBaseFee),
-				"last_ledger":           fmt.Sprint(action.LastLedger),
-			})
+			httpjson.Render(
+				action.W,
+				action.FeeStats,
+				httpjson.HALJSON,
+			)
 		},
 	)
 	return action.Err
@@ -82,20 +55,27 @@ func (action *FeeStatsAction) JSON() error {
 
 func (action *FeeStatsAction) loadRecords() {
 	cur := operationfeestats.CurrentState()
-	action.FeeMin = cur.FeeMin
-	action.FeeMode = cur.FeeMode
-	action.LastBaseFee = cur.LastBaseFee
-	action.LastLedger = cur.LastLedger
-	action.LedgerCapacityUsage = cur.LedgerCapacityUsage
-	action.FeeP10 = cur.FeeP10
-	action.FeeP20 = cur.FeeP20
-	action.FeeP30 = cur.FeeP30
-	action.FeeP40 = cur.FeeP40
-	action.FeeP50 = cur.FeeP50
-	action.FeeP60 = cur.FeeP60
-	action.FeeP70 = cur.FeeP70
-	action.FeeP80 = cur.FeeP80
-	action.FeeP90 = cur.FeeP90
-	action.FeeP95 = cur.FeeP95
-	action.FeeP99 = cur.FeeP99
+	action.FeeStats.MinAcceptedFee = int(cur.FeeMin)
+	action.FeeStats.ModeAcceptedFee = int(cur.FeeMode)
+	action.FeeStats.LastLedgerBaseFee = int(cur.LastBaseFee)
+	action.FeeStats.LastLedger = int(cur.LastLedger)
+	action.FeeStats.P10AcceptedFee = int(cur.FeeP10)
+	action.FeeStats.P20AcceptedFee = int(cur.FeeP20)
+	action.FeeStats.P30AcceptedFee = int(cur.FeeP30)
+	action.FeeStats.P40AcceptedFee = int(cur.FeeP40)
+	action.FeeStats.P50AcceptedFee = int(cur.FeeP50)
+	action.FeeStats.P60AcceptedFee = int(cur.FeeP60)
+	action.FeeStats.P70AcceptedFee = int(cur.FeeP70)
+	action.FeeStats.P80AcceptedFee = int(cur.FeeP80)
+	action.FeeStats.P90AcceptedFee = int(cur.FeeP90)
+	action.FeeStats.P95AcceptedFee = int(cur.FeeP95)
+	action.FeeStats.P99AcceptedFee = int(cur.FeeP99)
+
+	ledgerCapacityUsage, err := strconv.ParseFloat(cur.LedgerCapacityUsage, 64)
+	if err != nil {
+		action.Err = err
+		return
+	}
+
+	action.FeeStats.LedgerCapacityUsage = ledgerCapacityUsage
 }
