@@ -47,7 +47,7 @@ func (action *FeeStatsAction) JSON() error {
 			Type:   "endpoint_not_available",
 			Title:  "Endpoint Not Available",
 			Status: http.StatusNotImplemented,
-			Detail: "/operation_fee_stats is unavailable when Horizon is not ingesting failed " +
+			Detail: "/fee_stats is unavailable when Horizon is not ingesting failed " +
 				"transactions. Set `INGEST_FAILED_TRANSACTIONS=true` to start ingesting them.",
 		}
 		problem.Render(action.R.Context(), action.W, p)
