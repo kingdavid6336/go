@@ -102,6 +102,8 @@ func TestOperationFeeTestsActions_Show(t *testing.T) {
 				err := json.Unmarshal(w.Body.Bytes(), &result)
 				ht.Require.NoError(err)
 				ht.Assert.Equal(kase.lastbasefee, result.LastLedgerBaseFee, "base_fee")
+				ht.Assert.Equal(kase.ledgerCapacityUsage, result.LedgerCapacityUsage, "ledger_capacity_usage")
+
 				ht.Assert.Equal(kase.min, result.MinAcceptedFee, "min")
 				ht.Assert.Equal(kase.mode, result.ModeAcceptedFee, "mode")
 				ht.Assert.Equal(kase.p10, result.P10AcceptedFee, "p10")
@@ -115,7 +117,21 @@ func TestOperationFeeTestsActions_Show(t *testing.T) {
 				ht.Assert.Equal(kase.p90, result.P90AcceptedFee, "p90")
 				ht.Assert.Equal(kase.p95, result.P95AcceptedFee, "p95")
 				ht.Assert.Equal(kase.p99, result.P99AcceptedFee, "p99")
-				ht.Assert.Equal(kase.ledgerCapacityUsage, result.LedgerCapacityUsage, "ledger_capacity_usage")
+
+				// AcceptedFee is an alias for MaxFee data
+				ht.Assert.Equal(kase.min, result.MaxFee.Min, "min")
+				ht.Assert.Equal(kase.mode, result.MaxFee.Mode, "mode")
+				ht.Assert.Equal(kase.p10, result.MaxFee.P10, "p10")
+				ht.Assert.Equal(kase.p20, result.MaxFee.P20, "p20")
+				ht.Assert.Equal(kase.p30, result.MaxFee.P30, "p30")
+				ht.Assert.Equal(kase.p40, result.MaxFee.P40, "p40")
+				ht.Assert.Equal(kase.p50, result.MaxFee.P50, "p50")
+				ht.Assert.Equal(kase.p60, result.MaxFee.P60, "p60")
+				ht.Assert.Equal(kase.p70, result.MaxFee.P70, "p70")
+				ht.Assert.Equal(kase.p80, result.MaxFee.P80, "p80")
+				ht.Assert.Equal(kase.p90, result.MaxFee.P90, "p90")
+				ht.Assert.Equal(kase.p95, result.MaxFee.P95, "p95")
+				ht.Assert.Equal(kase.p99, result.MaxFee.P99, "p99")
 			}
 		})
 	}
@@ -143,9 +159,11 @@ func TestOperationFeeTestsActions_ShowMultiOp(t *testing.T) {
 		var result hProtocol.FeeStats
 		err := json.Unmarshal(w.Body.Bytes(), &result)
 		ht.Require.NoError(err)
+		ht.Assert.Equal(100, result.LastLedgerBaseFee, "base_fee")
+		ht.Assert.Equal(0.06, result.LedgerCapacityUsage, "ledger_capacity_usage")
+
 		ht.Assert.Equal(100, result.MinAcceptedFee, "min")
 		ht.Assert.Equal(200, result.ModeAcceptedFee, "mode")
-		ht.Assert.Equal(100, result.LastLedgerBaseFee, "base_fee")
 		ht.Assert.Equal(100, result.P10AcceptedFee, "p10")
 		ht.Assert.Equal(150, result.P20AcceptedFee, "p20")
 		ht.Assert.Equal(200, result.P30AcceptedFee, "p30")
@@ -157,7 +175,21 @@ func TestOperationFeeTestsActions_ShowMultiOp(t *testing.T) {
 		ht.Assert.Equal(200, result.P90AcceptedFee, "p90")
 		ht.Assert.Equal(200, result.P95AcceptedFee, "p95")
 		ht.Assert.Equal(200, result.P99AcceptedFee, "p99")
-		ht.Assert.Equal(0.06, result.LedgerCapacityUsage, "ledger_capacity_usage")
+
+		// AcceptedFee is an alias for MaxFee data
+		ht.Assert.Equal(100, result.MaxFee.Min, "min")
+		ht.Assert.Equal(200, result.MaxFee.Mode, "mode")
+		ht.Assert.Equal(100, result.MaxFee.P10, "p10")
+		ht.Assert.Equal(150, result.MaxFee.P20, "p20")
+		ht.Assert.Equal(200, result.MaxFee.P30, "p30")
+		ht.Assert.Equal(200, result.MaxFee.P40, "p40")
+		ht.Assert.Equal(200, result.MaxFee.P50, "p50")
+		ht.Assert.Equal(200, result.MaxFee.P60, "p60")
+		ht.Assert.Equal(200, result.MaxFee.P70, "p70")
+		ht.Assert.Equal(200, result.MaxFee.P80, "p80")
+		ht.Assert.Equal(200, result.MaxFee.P90, "p90")
+		ht.Assert.Equal(200, result.MaxFee.P95, "p95")
+		ht.Assert.Equal(200, result.MaxFee.P99, "p99")
 	}
 }
 
@@ -181,9 +213,10 @@ func TestOperationFeeTestsActions_NotInterpolating(t *testing.T) {
 		var result hProtocol.FeeStats
 		err := json.Unmarshal(w.Body.Bytes(), &result)
 		ht.Require.NoError(err)
+		ht.Assert.Equal(100, result.LastLedgerBaseFee, "base_fee")
+		ht.Assert.Equal(0.09, result.LedgerCapacityUsage, "ledger_capacity_usage")
 		ht.Assert.Equal(200, result.MinAcceptedFee, "min")
 		ht.Assert.Equal(400, result.ModeAcceptedFee, "mode")
-		ht.Assert.Equal(100, result.LastLedgerBaseFee, "base_fee")
 		ht.Assert.Equal(200, result.P10AcceptedFee, "p10")
 		ht.Assert.Equal(300, result.P20AcceptedFee, "p20")
 		ht.Assert.Equal(400, result.P30AcceptedFee, "p30")
@@ -195,6 +228,20 @@ func TestOperationFeeTestsActions_NotInterpolating(t *testing.T) {
 		ht.Assert.Equal(16000, result.P90AcceptedFee, "p90")
 		ht.Assert.Equal(16000, result.P95AcceptedFee, "p95")
 		ht.Assert.Equal(16000, result.P99AcceptedFee, "p99")
-		ht.Assert.Equal(0.09, result.LedgerCapacityUsage, "ledger_capacity_usage")
+
+		// AcceptedFee is an alias for MaxFee data
+		ht.Assert.Equal(200, result.MaxFee.Min, "min")
+		ht.Assert.Equal(400, result.MaxFee.Mode, "mode")
+		ht.Assert.Equal(200, result.MaxFee.P10, "p10")
+		ht.Assert.Equal(300, result.MaxFee.P20, "p20")
+		ht.Assert.Equal(400, result.MaxFee.P30, "p30")
+		ht.Assert.Equal(400, result.MaxFee.P40, "p40")
+		ht.Assert.Equal(400, result.MaxFee.P50, "p50")
+		ht.Assert.Equal(400, result.MaxFee.P60, "p60")
+		ht.Assert.Equal(400, result.MaxFee.P70, "p70")
+		ht.Assert.Equal(400, result.MaxFee.P80, "p80")
+		ht.Assert.Equal(16000, result.MaxFee.P90, "p90")
+		ht.Assert.Equal(16000, result.MaxFee.P95, "p95")
+		ht.Assert.Equal(16000, result.MaxFee.P99, "p99")
 	}
 }

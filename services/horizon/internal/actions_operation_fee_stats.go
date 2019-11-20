@@ -55,21 +55,8 @@ func (action *FeeStatsAction) JSON() error {
 
 func (action *FeeStatsAction) loadRecords() {
 	cur := operationfeestats.CurrentState()
-	action.FeeStats.MinAcceptedFee = int(cur.FeeMin)
-	action.FeeStats.ModeAcceptedFee = int(cur.FeeMode)
 	action.FeeStats.LastLedgerBaseFee = int(cur.LastBaseFee)
 	action.FeeStats.LastLedger = int(cur.LastLedger)
-	action.FeeStats.P10AcceptedFee = int(cur.FeeP10)
-	action.FeeStats.P20AcceptedFee = int(cur.FeeP20)
-	action.FeeStats.P30AcceptedFee = int(cur.FeeP30)
-	action.FeeStats.P40AcceptedFee = int(cur.FeeP40)
-	action.FeeStats.P50AcceptedFee = int(cur.FeeP50)
-	action.FeeStats.P60AcceptedFee = int(cur.FeeP60)
-	action.FeeStats.P70AcceptedFee = int(cur.FeeP70)
-	action.FeeStats.P80AcceptedFee = int(cur.FeeP80)
-	action.FeeStats.P90AcceptedFee = int(cur.FeeP90)
-	action.FeeStats.P95AcceptedFee = int(cur.FeeP95)
-	action.FeeStats.P99AcceptedFee = int(cur.FeeP99)
 
 	ledgerCapacityUsage, err := strconv.ParseFloat(cur.LedgerCapacityUsage, 64)
 	if err != nil {
@@ -78,4 +65,36 @@ func (action *FeeStatsAction) loadRecords() {
 	}
 
 	action.FeeStats.LedgerCapacityUsage = ledgerCapacityUsage
+
+	// MaxFee
+	action.FeeStats.MaxFee.Min = int(cur.FeeMin)
+	action.FeeStats.MaxFee.Mode = int(cur.FeeMode)
+	action.FeeStats.MaxFee.P10 = int(cur.FeeP10)
+	action.FeeStats.MaxFee.P20 = int(cur.FeeP20)
+	action.FeeStats.MaxFee.P30 = int(cur.FeeP30)
+	action.FeeStats.MaxFee.P40 = int(cur.FeeP40)
+	action.FeeStats.MaxFee.P50 = int(cur.FeeP50)
+	action.FeeStats.MaxFee.P60 = int(cur.FeeP60)
+	action.FeeStats.MaxFee.P70 = int(cur.FeeP70)
+	action.FeeStats.MaxFee.P80 = int(cur.FeeP80)
+	action.FeeStats.MaxFee.P90 = int(cur.FeeP90)
+	action.FeeStats.MaxFee.P95 = int(cur.FeeP95)
+	action.FeeStats.MaxFee.P99 = int(cur.FeeP99)
+
+	// AcceptedFee is an alias for MaxFee
+	// Action needed in release: horizon-v1.0.0
+	// Remove AcceptedFee fields
+	action.FeeStats.MinAcceptedFee = action.FeeStats.MaxFee.Min
+	action.FeeStats.ModeAcceptedFee = action.FeeStats.MaxFee.Mode
+	action.FeeStats.P10AcceptedFee = action.FeeStats.MaxFee.P10
+	action.FeeStats.P20AcceptedFee = action.FeeStats.MaxFee.P20
+	action.FeeStats.P30AcceptedFee = action.FeeStats.MaxFee.P30
+	action.FeeStats.P40AcceptedFee = action.FeeStats.MaxFee.P40
+	action.FeeStats.P50AcceptedFee = action.FeeStats.MaxFee.P50
+	action.FeeStats.P60AcceptedFee = action.FeeStats.MaxFee.P60
+	action.FeeStats.P70AcceptedFee = action.FeeStats.MaxFee.P70
+	action.FeeStats.P80AcceptedFee = action.FeeStats.MaxFee.P80
+	action.FeeStats.P90AcceptedFee = action.FeeStats.MaxFee.P90
+	action.FeeStats.P95AcceptedFee = action.FeeStats.MaxFee.P95
+	action.FeeStats.P99AcceptedFee = action.FeeStats.MaxFee.P99
 }
