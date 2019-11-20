@@ -660,6 +660,7 @@ type FeeStats struct {
 	P95AcceptedFee      int          `json:"p95_accepted_fee,string"`
 	P99AcceptedFee      int          `json:"p99_accepted_fee,string"`
 	MaxFee              feeStatsBase `json:"max_fee"`
+	FeeCharged          feeStatsBase `json:"fee_charged"`
 }
 
 // TransactionsPage contains records of transaction information returned by Horizon

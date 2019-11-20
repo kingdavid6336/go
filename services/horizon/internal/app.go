@@ -262,6 +262,7 @@ func (a *App) UpdateFeeStatsState() {
 	// if no transactions in last 5 ledgers, return
 	// latest ledger's base fee for all
 	if !feeStats.MaxFeeMode.Valid && !feeStats.MaxFeeMin.Valid {
+		// MaxFee
 		next.FeeMin = next.LastBaseFee
 		next.FeeMode = next.LastBaseFee
 		next.FeeP10 = next.LastBaseFee
@@ -275,7 +276,24 @@ func (a *App) UpdateFeeStatsState() {
 		next.FeeP90 = next.LastBaseFee
 		next.FeeP95 = next.LastBaseFee
 		next.FeeP99 = next.LastBaseFee
+
+		// FeeCharged
+		next.FeeChargedMin = next.LastBaseFee
+		next.FeeChargedMode = next.LastBaseFee
+		next.FeeChargedP10 = next.LastBaseFee
+		next.FeeChargedP20 = next.LastBaseFee
+		next.FeeChargedP30 = next.LastBaseFee
+		next.FeeChargedP40 = next.LastBaseFee
+		next.FeeChargedP50 = next.LastBaseFee
+		next.FeeChargedP60 = next.LastBaseFee
+		next.FeeChargedP70 = next.LastBaseFee
+		next.FeeChargedP80 = next.LastBaseFee
+		next.FeeChargedP90 = next.LastBaseFee
+		next.FeeChargedP95 = next.LastBaseFee
+		next.FeeChargedP99 = next.LastBaseFee
+
 	} else {
+		// MaxFee
 		next.FeeMin = feeStats.MaxFeeMin.Int64
 		next.FeeMode = feeStats.MaxFeeMode.Int64
 		next.FeeP10 = feeStats.MaxFeeP10.Int64
@@ -289,6 +307,21 @@ func (a *App) UpdateFeeStatsState() {
 		next.FeeP90 = feeStats.MaxFeeP90.Int64
 		next.FeeP95 = feeStats.MaxFeeP95.Int64
 		next.FeeP99 = feeStats.MaxFeeP99.Int64
+
+		// FeeCharged
+		next.FeeChargedMin = feeStats.FeeChargedMin.Int64
+		next.FeeChargedMode = feeStats.FeeChargedMode.Int64
+		next.FeeChargedP10 = feeStats.FeeChargedP10.Int64
+		next.FeeChargedP20 = feeStats.FeeChargedP20.Int64
+		next.FeeChargedP30 = feeStats.FeeChargedP30.Int64
+		next.FeeChargedP40 = feeStats.FeeChargedP40.Int64
+		next.FeeChargedP50 = feeStats.FeeChargedP50.Int64
+		next.FeeChargedP60 = feeStats.FeeChargedP60.Int64
+		next.FeeChargedP70 = feeStats.FeeChargedP70.Int64
+		next.FeeChargedP80 = feeStats.FeeChargedP80.Int64
+		next.FeeChargedP90 = feeStats.FeeChargedP90.Int64
+		next.FeeChargedP95 = feeStats.FeeChargedP95.Int64
+		next.FeeChargedP99 = feeStats.FeeChargedP99.Int64
 	}
 
 	operationfeestats.SetState(next)

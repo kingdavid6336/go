@@ -66,6 +66,21 @@ func (action *FeeStatsAction) loadRecords() {
 
 	action.FeeStats.LedgerCapacityUsage = ledgerCapacityUsage
 
+	// FeeCharged
+	action.FeeStats.FeeCharged.Min = int(cur.FeeChargedMin)
+	action.FeeStats.FeeCharged.Mode = int(cur.FeeChargedMode)
+	action.FeeStats.FeeCharged.P10 = int(cur.FeeChargedP10)
+	action.FeeStats.FeeCharged.P20 = int(cur.FeeChargedP20)
+	action.FeeStats.FeeCharged.P30 = int(cur.FeeChargedP30)
+	action.FeeStats.FeeCharged.P40 = int(cur.FeeChargedP40)
+	action.FeeStats.FeeCharged.P50 = int(cur.FeeChargedP50)
+	action.FeeStats.FeeCharged.P60 = int(cur.FeeChargedP60)
+	action.FeeStats.FeeCharged.P70 = int(cur.FeeChargedP70)
+	action.FeeStats.FeeCharged.P80 = int(cur.FeeChargedP80)
+	action.FeeStats.FeeCharged.P90 = int(cur.FeeChargedP90)
+	action.FeeStats.FeeCharged.P95 = int(cur.FeeChargedP95)
+	action.FeeStats.FeeCharged.P99 = int(cur.FeeChargedP99)
+
 	// MaxFee
 	action.FeeStats.MaxFee.Min = int(cur.FeeMin)
 	action.FeeStats.MaxFee.Mode = int(cur.FeeMode)
