@@ -21,27 +21,6 @@ import (
 	"github.com/stellar/go/xdr"
 )
 
-const (
-	// CurrentVersion reflects the latest version of the ingestion
-	// algorithm. This value is stored in KV store and is used to decide
-	// if there's a need to reprocess the ledger state or reingest data.
-	//
-	// Version history:
-	// - 1: Initial version
-	// - 2: Added the orderbook, offers processors and distributed ingestion.
-	// - 3: Fixed a bug that could potentialy result in invalid state
-	//      (#1722). Update the version to clear the state.
-	// - 4: Fixed a bug in AccountSignersChanged method.
-	// - 5: Added trust lines.
-	// - 6: Added accounts and accounts data.
-	// - 7: Fixes a bug in AccountSignersChanged method.
-	// - 8: Fixes AccountSigners processor to remove preauth tx signer
-	//      when preauth tx is failed.
-	// - 9: Fixes a bug in asset stats processor that counted unauthorized
-	//      trustlines.
-	CurrentVersion = 9
-)
-
 var log = ilog.DefaultLogger.WithField("service", "expingest")
 
 type Config struct {
@@ -239,7 +218,7 @@ func (s *System) Run() {
 			return errors.Wrap(err, "Error getting exp ingest version")
 		}
 
-		if ingestVersion != CurrentVersion || lastIngestedLedger == 0 {
+		if ingestVersion != history.CurrentExpIngestVersion || lastIngestedLedger == 0 {
 			// This block is either starting from empty state or ingestion
 			// version upgrade.
 			// This will always run on a single instance due to the fact that
