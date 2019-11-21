@@ -10,6 +10,7 @@ func TestOperationFeeTestsActions_Show(t *testing.T) {
 	testCases := []struct {
 		scenario            string
 		lastbasefee         int
+		max                 int
 		min                 int
 		mode                int
 		p10                 int
@@ -23,6 +24,7 @@ func TestOperationFeeTestsActions_Show(t *testing.T) {
 		p90                 int
 		p95                 int
 		p99                 int
+		feeChargedMax       int
 		feeChargedMin       int
 		feeChargedMode      int
 		feeChargedP10       int
@@ -42,6 +44,7 @@ func TestOperationFeeTestsActions_Show(t *testing.T) {
 		{
 			scenario:            "operation_fee_stats_1",
 			lastbasefee:         100,
+			max:                 100,
 			min:                 100,
 			mode:                100,
 			p10:                 100,
@@ -55,6 +58,7 @@ func TestOperationFeeTestsActions_Show(t *testing.T) {
 			p90:                 100,
 			p95:                 100,
 			p99:                 100,
+			feeChargedMax:       100,
 			feeChargedMin:       100,
 			feeChargedMode:      100,
 			feeChargedP10:       100,
@@ -75,6 +79,7 @@ func TestOperationFeeTestsActions_Show(t *testing.T) {
 			scenario:            "operation_fee_stats_2",
 			ledgerCapacityUsage: 0.00,
 			lastbasefee:         100,
+			max:                 100,
 			min:                 100,
 			mode:                100,
 			p10:                 100,
@@ -88,6 +93,7 @@ func TestOperationFeeTestsActions_Show(t *testing.T) {
 			p90:                 100,
 			p95:                 100,
 			p99:                 100,
+			feeChargedMax:       100,
 			feeChargedMin:       100,
 			feeChargedMode:      100,
 			feeChargedP10:       100,
@@ -107,6 +113,7 @@ func TestOperationFeeTestsActions_Show(t *testing.T) {
 			scenario:            "operation_fee_stats_3",
 			ledgerCapacityUsage: 0.03,
 			lastbasefee:         100,
+			max:                 400,
 			min:                 200,
 			mode:                400,
 			p10:                 200,
@@ -120,6 +127,7 @@ func TestOperationFeeTestsActions_Show(t *testing.T) {
 			p90:                 400,
 			p95:                 400,
 			p99:                 400,
+			feeChargedMax:       100,
 			feeChargedMin:       100,
 			feeChargedMode:      100,
 			feeChargedP10:       100,
@@ -185,19 +193,20 @@ func TestOperationFeeTestsActions_Show(t *testing.T) {
 				ht.Assert.Equal(kase.p95, result.MaxFee.P95, "p95")
 				ht.Assert.Equal(kase.p99, result.MaxFee.P99, "p99")
 
-				ht.Assert.Equal(kase.feeChargedMin, result.FeeCharged.Min, "min")
-				ht.Assert.Equal(kase.feeChargedMode, result.FeeCharged.Mode, "mode")
-				ht.Assert.Equal(kase.feeChargedP10, result.FeeCharged.P10, "p10")
-				ht.Assert.Equal(kase.feeChargedP20, result.FeeCharged.P20, "p20")
-				ht.Assert.Equal(kase.feeChargedP30, result.FeeCharged.P30, "p30")
-				ht.Assert.Equal(kase.feeChargedP40, result.FeeCharged.P40, "p40")
-				ht.Assert.Equal(kase.feeChargedP50, result.FeeCharged.P50, "p50")
-				ht.Assert.Equal(kase.feeChargedP60, result.FeeCharged.P60, "p60")
-				ht.Assert.Equal(kase.feeChargedP70, result.FeeCharged.P70, "p70")
-				ht.Assert.Equal(kase.feeChargedP80, result.FeeCharged.P80, "p80")
-				ht.Assert.Equal(kase.feeChargedP90, result.FeeCharged.P90, "p90")
-				ht.Assert.Equal(kase.feeChargedP95, result.FeeCharged.P95, "p95")
-				ht.Assert.Equal(kase.feeChargedP99, result.FeeCharged.P99, "p99")
+				ht.Assert.Equal(kase.feeChargedMax, result.FeeCharged.Max, "fee_charged_max")
+				ht.Assert.Equal(kase.feeChargedMin, result.FeeCharged.Min, "fee_charged_min")
+				ht.Assert.Equal(kase.feeChargedMode, result.FeeCharged.Mode, "fee_charged_mode")
+				ht.Assert.Equal(kase.feeChargedP10, result.FeeCharged.P10, "fee_charged_p10")
+				ht.Assert.Equal(kase.feeChargedP20, result.FeeCharged.P20, "fee_charged_p20")
+				ht.Assert.Equal(kase.feeChargedP30, result.FeeCharged.P30, "fee_charged_p30")
+				ht.Assert.Equal(kase.feeChargedP40, result.FeeCharged.P40, "fee_charged_p40")
+				ht.Assert.Equal(kase.feeChargedP50, result.FeeCharged.P50, "fee_charged_p50")
+				ht.Assert.Equal(kase.feeChargedP60, result.FeeCharged.P60, "fee_charged_p60")
+				ht.Assert.Equal(kase.feeChargedP70, result.FeeCharged.P70, "fee_charged_p70")
+				ht.Assert.Equal(kase.feeChargedP80, result.FeeCharged.P80, "fee_charged_p80")
+				ht.Assert.Equal(kase.feeChargedP90, result.FeeCharged.P90, "fee_charged_p90")
+				ht.Assert.Equal(kase.feeChargedP95, result.FeeCharged.P95, "fee_charged_p95")
+				ht.Assert.Equal(kase.feeChargedP99, result.FeeCharged.P99, "fee_charged_p99")
 			}
 		})
 	}
@@ -243,33 +252,35 @@ func TestOperationFeeTestsActions_ShowMultiOp(t *testing.T) {
 		ht.Assert.Equal(200, result.P99AcceptedFee, "p99")
 
 		// AcceptedFee is an alias for MaxFee data
-		ht.Assert.Equal(100, result.MaxFee.Min, "min")
-		ht.Assert.Equal(200, result.MaxFee.Mode, "mode")
-		ht.Assert.Equal(100, result.MaxFee.P10, "p10")
-		ht.Assert.Equal(150, result.MaxFee.P20, "p20")
-		ht.Assert.Equal(200, result.MaxFee.P30, "p30")
-		ht.Assert.Equal(200, result.MaxFee.P40, "p40")
-		ht.Assert.Equal(200, result.MaxFee.P50, "p50")
-		ht.Assert.Equal(200, result.MaxFee.P60, "p60")
-		ht.Assert.Equal(200, result.MaxFee.P70, "p70")
-		ht.Assert.Equal(200, result.MaxFee.P80, "p80")
-		ht.Assert.Equal(200, result.MaxFee.P90, "p90")
-		ht.Assert.Equal(200, result.MaxFee.P95, "p95")
-		ht.Assert.Equal(200, result.MaxFee.P99, "p99")
+		ht.Assert.Equal(200, result.MaxFee.Max, "max_fee_max")
+		ht.Assert.Equal(100, result.MaxFee.Min, "max_fee_min")
+		ht.Assert.Equal(200, result.MaxFee.Mode, "max_fee_mode")
+		ht.Assert.Equal(100, result.MaxFee.P10, "max_fee_p10")
+		ht.Assert.Equal(150, result.MaxFee.P20, "max_fee_p20")
+		ht.Assert.Equal(200, result.MaxFee.P30, "max_fee_p30")
+		ht.Assert.Equal(200, result.MaxFee.P40, "max_fee_p40")
+		ht.Assert.Equal(200, result.MaxFee.P50, "max_fee_p50")
+		ht.Assert.Equal(200, result.MaxFee.P60, "max_fee_p60")
+		ht.Assert.Equal(200, result.MaxFee.P70, "max_fee_p70")
+		ht.Assert.Equal(200, result.MaxFee.P80, "max_fee_p80")
+		ht.Assert.Equal(200, result.MaxFee.P90, "max_fee_p90")
+		ht.Assert.Equal(200, result.MaxFee.P95, "max_fee_p95")
+		ht.Assert.Equal(200, result.MaxFee.P99, "max_fee_p99")
 
-		ht.Assert.Equal(50, result.FeeCharged.Min, "min")
-		ht.Assert.Equal(50, result.FeeCharged.Mode, "mode")
-		ht.Assert.Equal(50, result.FeeCharged.P10, "p10")
-		ht.Assert.Equal(50, result.FeeCharged.P20, "p20")
-		ht.Assert.Equal(50, result.FeeCharged.P30, "p30")
-		ht.Assert.Equal(50, result.FeeCharged.P40, "p40")
-		ht.Assert.Equal(50, result.FeeCharged.P50, "p50")
-		ht.Assert.Equal(50, result.FeeCharged.P60, "p60")
-		ht.Assert.Equal(50, result.FeeCharged.P70, "p70")
-		ht.Assert.Equal(50, result.FeeCharged.P80, "p80")
-		ht.Assert.Equal(50, result.FeeCharged.P90, "p90")
-		ht.Assert.Equal(50, result.FeeCharged.P95, "p95")
-		ht.Assert.Equal(50, result.FeeCharged.P99, "p99")
+		ht.Assert.Equal(50, result.FeeCharged.Max, "fee_charged_max")
+		ht.Assert.Equal(50, result.FeeCharged.Min, "fee_charged_min")
+		ht.Assert.Equal(50, result.FeeCharged.Mode, "fee_charged_mode")
+		ht.Assert.Equal(50, result.FeeCharged.P10, "fee_charged_p10")
+		ht.Assert.Equal(50, result.FeeCharged.P20, "fee_charged_p20")
+		ht.Assert.Equal(50, result.FeeCharged.P30, "fee_charged_p30")
+		ht.Assert.Equal(50, result.FeeCharged.P40, "fee_charged_p40")
+		ht.Assert.Equal(50, result.FeeCharged.P50, "fee_charged_p50")
+		ht.Assert.Equal(50, result.FeeCharged.P60, "fee_charged_p60")
+		ht.Assert.Equal(50, result.FeeCharged.P70, "fee_charged_p70")
+		ht.Assert.Equal(50, result.FeeCharged.P80, "fee_charged_p80")
+		ht.Assert.Equal(50, result.FeeCharged.P90, "fee_charged_p90")
+		ht.Assert.Equal(50, result.FeeCharged.P95, "fee_charged_p95")
+		ht.Assert.Equal(50, result.FeeCharged.P99, "fee_charged_p99")
 	}
 }
 
@@ -310,32 +321,34 @@ func TestOperationFeeTestsActions_NotInterpolating(t *testing.T) {
 		ht.Assert.Equal(16000, result.P99AcceptedFee, "p99")
 
 		// AcceptedFee is an alias for MaxFee data
-		ht.Assert.Equal(200, result.MaxFee.Min, "min")
-		ht.Assert.Equal(400, result.MaxFee.Mode, "mode")
-		ht.Assert.Equal(200, result.MaxFee.P10, "p10")
-		ht.Assert.Equal(300, result.MaxFee.P20, "p20")
-		ht.Assert.Equal(400, result.MaxFee.P30, "p30")
-		ht.Assert.Equal(400, result.MaxFee.P40, "p40")
-		ht.Assert.Equal(400, result.MaxFee.P50, "p50")
-		ht.Assert.Equal(400, result.MaxFee.P60, "p60")
-		ht.Assert.Equal(400, result.MaxFee.P70, "p70")
-		ht.Assert.Equal(400, result.MaxFee.P80, "p80")
-		ht.Assert.Equal(16000, result.MaxFee.P90, "p90")
-		ht.Assert.Equal(16000, result.MaxFee.P95, "p95")
-		ht.Assert.Equal(16000, result.MaxFee.P99, "p99")
+		ht.Assert.Equal(16000, result.MaxFee.Max, "max_fee_max")
+		ht.Assert.Equal(200, result.MaxFee.Min, "max_fee_min")
+		ht.Assert.Equal(400, result.MaxFee.Mode, "max_fee_mode")
+		ht.Assert.Equal(200, result.MaxFee.P10, "max_fee_p10")
+		ht.Assert.Equal(300, result.MaxFee.P20, "max_fee_p20")
+		ht.Assert.Equal(400, result.MaxFee.P30, "max_fee_p30")
+		ht.Assert.Equal(400, result.MaxFee.P40, "max_fee_p40")
+		ht.Assert.Equal(400, result.MaxFee.P50, "max_fee_p50")
+		ht.Assert.Equal(400, result.MaxFee.P60, "max_fee_p60")
+		ht.Assert.Equal(400, result.MaxFee.P70, "max_fee_p70")
+		ht.Assert.Equal(400, result.MaxFee.P80, "max_fee_p80")
+		ht.Assert.Equal(16000, result.MaxFee.P90, "max_fee_p90")
+		ht.Assert.Equal(16000, result.MaxFee.P95, "max_fee_p95")
+		ht.Assert.Equal(16000, result.MaxFee.P99, "max_fee_p99")
 
-		ht.Assert.Equal(6, result.FeeCharged.Min, "min")
-		ht.Assert.Equal(100, result.FeeCharged.Mode, "mode")
-		ht.Assert.Equal(6, result.FeeCharged.P10, "p10")
-		ht.Assert.Equal(100, result.FeeCharged.P20, "p20")
-		ht.Assert.Equal(100, result.FeeCharged.P30, "p30")
-		ht.Assert.Equal(100, result.FeeCharged.P40, "p40")
-		ht.Assert.Equal(100, result.FeeCharged.P50, "p50")
-		ht.Assert.Equal(100, result.FeeCharged.P60, "p60")
-		ht.Assert.Equal(100, result.FeeCharged.P70, "p70")
-		ht.Assert.Equal(100, result.FeeCharged.P80, "p80")
-		ht.Assert.Equal(100, result.FeeCharged.P90, "p90")
-		ht.Assert.Equal(100, result.FeeCharged.P95, "p95")
-		ht.Assert.Equal(100, result.FeeCharged.P99, "p99")
+		ht.Assert.Equal(100, result.FeeCharged.Max, "fee_charged_max")
+		ht.Assert.Equal(6, result.FeeCharged.Min, "fee_charged_min")
+		ht.Assert.Equal(100, result.FeeCharged.Mode, "fee_charged_mode")
+		ht.Assert.Equal(6, result.FeeCharged.P10, "fee_charged_p10")
+		ht.Assert.Equal(100, result.FeeCharged.P20, "fee_charged_p20")
+		ht.Assert.Equal(100, result.FeeCharged.P30, "fee_charged_p30")
+		ht.Assert.Equal(100, result.FeeCharged.P40, "fee_charged_p40")
+		ht.Assert.Equal(100, result.FeeCharged.P50, "fee_charged_p50")
+		ht.Assert.Equal(100, result.FeeCharged.P60, "fee_charged_p60")
+		ht.Assert.Equal(100, result.FeeCharged.P70, "fee_charged_p70")
+		ht.Assert.Equal(100, result.FeeCharged.P80, "fee_charged_p80")
+		ht.Assert.Equal(100, result.FeeCharged.P90, "fee_charged_p90")
+		ht.Assert.Equal(100, result.FeeCharged.P95, "fee_charged_p95")
+		ht.Assert.Equal(100, result.FeeCharged.P99, "fee_charged_p99")
 	}
 }

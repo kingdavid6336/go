@@ -12,6 +12,7 @@ import (
 // State represents a snapshot of horizon's view of the state of operation fee's
 // on the network.
 type State struct {
+	FeeChargedMax  int64
 	FeeChargedMin  int64
 	FeeChargedMode int64
 	FeeChargedP10  int64
@@ -27,6 +28,7 @@ type State struct {
 	FeeChargedP99  int64
 
 	// MaxFee
+	FeeMax  int64
 	FeeMin  int64
 	FeeMode int64
 	FeeP10  int64

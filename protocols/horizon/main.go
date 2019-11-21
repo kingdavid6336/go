@@ -625,6 +625,7 @@ type Metrics struct {
 }
 
 type feeStatsBase struct {
+	Max  int `json:"max,string"`
 	Min  int `json:"min,string"`
 	Mode int `json:"mode,string"`
 	P10  int `json:"p10,string"`

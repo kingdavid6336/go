@@ -44,6 +44,7 @@ func (r *Operation) UnmarshalDetails(dest interface{}) error {
 func (q *Q) FeeStats(currentSeq int32, dest *FeeStats) error {
 	return q.GetRaw(dest, `
 		SELECT
+			ceil(max(fee_charged/operation_count))::bigint AS "fee_charged_max",
 		    ceil(min(fee_charged/operation_count))::bigint AS "fee_charged_min",
 		    ceil(mode() within group (order by fee_charged/operation_count))::bigint AS "fee_charged_mode",
 		    ceil(percentile_disc(0.10) WITHIN GROUP (ORDER BY fee_charged/operation_count))::bigint AS "fee_charged_p10",
@@ -56,7 +57,8 @@ func (q *Q) FeeStats(currentSeq int32, dest *FeeStats) error {
 		    ceil(percentile_disc(0.80) WITHIN GROUP (ORDER BY fee_charged/operation_count))::bigint AS "fee_charged_p80",
 		    ceil(percentile_disc(0.90) WITHIN GROUP (ORDER BY fee_charged/operation_count))::bigint AS "fee_charged_p90",
 		    ceil(percentile_disc(0.95) WITHIN GROUP (ORDER BY fee_charged/operation_count))::bigint AS "fee_charged_p95",
-		    ceil(percentile_disc(0.99) WITHIN GROUP (ORDER BY fee_charged/operation_count))::bigint AS "fee_charged_p99",
+			ceil(percentile_disc(0.99) WITHIN GROUP (ORDER BY fee_charged/operation_count))::bigint AS "fee_charged_p99",
+			ceil(max(max_fee/operation_count))::bigint AS "max_fee_max",
 			ceil(min(max_fee/operation_count))::bigint AS "max_fee_min",
 			ceil(mode() within group (order by max_fee/operation_count))::bigint AS "max_fee_mode",
 			ceil(percentile_disc(0.10) WITHIN GROUP (ORDER BY max_fee/operation_count))::bigint AS "max_fee_p10",

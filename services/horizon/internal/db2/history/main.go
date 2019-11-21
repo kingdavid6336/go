@@ -292,6 +292,7 @@ type EffectType int
 // FeeStats is a row of data from the min, mode, percentile aggregate functions over the
 // `history_transactions` table.
 type FeeStats struct {
+	FeeChargedMax  null.Int `db:"fee_charged_max"`
 	FeeChargedMin  null.Int `db:"fee_charged_min"`
 	FeeChargedMode null.Int `db:"fee_charged_mode"`
 	FeeChargedP10  null.Int `db:"fee_charged_p10"`
@@ -305,6 +306,7 @@ type FeeStats struct {
 	FeeChargedP90  null.Int `db:"fee_charged_p90"`
 	FeeChargedP95  null.Int `db:"fee_charged_p95"`
 	FeeChargedP99  null.Int `db:"fee_charged_p99"`
+	MaxFeeMax      null.Int `db:"max_fee_max"`
 	MaxFeeMin      null.Int `db:"max_fee_min"`
 	MaxFeeMode     null.Int `db:"max_fee_mode"`
 	MaxFeeP10      null.Int `db:"max_fee_p10"`

@@ -263,6 +263,7 @@ func (a *App) UpdateFeeStatsState() {
 	// latest ledger's base fee for all
 	if !feeStats.MaxFeeMode.Valid && !feeStats.MaxFeeMin.Valid {
 		// MaxFee
+		next.FeeMax = next.LastBaseFee
 		next.FeeMin = next.LastBaseFee
 		next.FeeMode = next.LastBaseFee
 		next.FeeP10 = next.LastBaseFee
@@ -278,6 +279,7 @@ func (a *App) UpdateFeeStatsState() {
 		next.FeeP99 = next.LastBaseFee
 
 		// FeeCharged
+		next.FeeChargedMax = next.LastBaseFee
 		next.FeeChargedMin = next.LastBaseFee
 		next.FeeChargedMode = next.LastBaseFee
 		next.FeeChargedP10 = next.LastBaseFee
@@ -294,6 +296,7 @@ func (a *App) UpdateFeeStatsState() {
 
 	} else {
 		// MaxFee
+		next.FeeMax = feeStats.MaxFeeMax.Int64
 		next.FeeMin = feeStats.MaxFeeMin.Int64
 		next.FeeMode = feeStats.MaxFeeMode.Int64
 		next.FeeP10 = feeStats.MaxFeeP10.Int64
@@ -309,6 +312,7 @@ func (a *App) UpdateFeeStatsState() {
 		next.FeeP99 = feeStats.MaxFeeP99.Int64
 
 		// FeeCharged
+		next.FeeChargedMax = feeStats.FeeChargedMax.Int64
 		next.FeeChargedMin = feeStats.FeeChargedMin.Int64
 		next.FeeChargedMode = feeStats.FeeChargedMode.Int64
 		next.FeeChargedP10 = feeStats.FeeChargedP10.Int64
