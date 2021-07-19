@@ -23,6 +23,7 @@ intended for **testing only**. It is being conceived to:
 * [regulated\-assets\-approval\-server](#regulated-assets-approval-server)
   * [Table of Contents](#table-of-contents)
   * [Usage](#usage)
+    * [Usage: Configure Issuer](#usage-configure-issuer)
     * [Usage: Migrate](#usage-migrate)
       * [Migration files](#migration-files)
     * [Usage: Serve](#usage-serve)
@@ -38,7 +39,7 @@ Created by [gh-md-toc](https://github.com/ekalinin/github-markdown-toc.go)
 
 ## Usage
 
-```sh
+```
 $ go install
 $ regulated-assets-approval-server --help
 SEP-8 Approval Server
@@ -48,15 +49,34 @@ Usage:
   regulated-assets-approval-server [command]
 
 Available Commands:
-  migrate     Run migrations on the database
-  serve       Serve the SEP-8 Approval Server
+  configure-issuer Configure the Asset Issuer Account for SEP-8 Regulated Assets
+  migrate          Run migrations on the database
+  serve            Serve the SEP-8 Approval Server
 
 Use "regulated-assets-approval-server [command] --help" for more information about a command.
 ```
 
+### Usage: Configure Issuer
+
+```
+$ go install
+$ regulated-assets-approval-server configure-issuer --help
+Configure the Asset Issuer Account for SEP-8 Regulated Assets
+
+Usage:
+  regulated-assets-approval-server configure-issuer [flags]
+
+Flags:
+      --asset-code string              The code of the regulated asset (ASSET_CODE)
+      --base-url string                The base url to the server where the asset home domain should be. For instance, "https://test.example.com/" if your desired asset home domain is "test.example.com". (BASE_URL)
+      --horizon-url string             Horizon URL used for looking up account details (HORIZON_URL) (default "https://horizon-testnet.stellar.org/")
+      --issuer-account-secret string   Secret key of the issuer account. (ISSUER_ACCOUNT_SECRET)
+      --network-passphrase string      Network passphrase of the Stellar network transactions should be signed for (NETWORK_PASSPHRASE) (default "Test SDF Network ; September 2015")
+```
+
 ### Usage: Migrate
 
-```sh
+```
 $ go install
 $ regulated-assets-approval-server migrate --help
 Run migrations on the database
@@ -81,7 +101,7 @@ $ ./gogenerate.sh
 
 ### Usage: Serve
 
-```sh
+```
 $ go install
 $ regulated-assets-approval-server serve --help
 Serve the SEP-8 Approval Server
@@ -109,10 +129,10 @@ be configured according with SEP-8 [authorization flags] by setting both
 `Authorization Required` and `Authorization Revocable` flags. This allows the
 issuer to grant and revoke authorization to transact the asset at will.
 
-You can use [this
+You can use the command [`$ regulated-assets-approval-server
+configure-issuer`](#usage-configure-issuer) or [this Stellar Laboratory
 link](https://laboratory.stellar.org/#txbuilder?params=eyJhdHRyaWJ1dGVzIjp7ImZlZSI6IjEwMCIsImJhc2VGZWUiOiIxMDAiLCJtaW5GZWUiOiIxMDAifSwiZmVlQnVtcEF0dHJpYnV0ZXMiOnsibWF4RmVlIjoiMTAwIn0sIm9wZXJhdGlvbnMiOlt7ImlkIjowLCJhdHRyaWJ1dGVzIjp7InNldEZsYWdzIjozfSwibmFtZSI6InNldE9wdGlvbnMifV19)
-to set those flags in Stellar Laboratory. Click the link, fill the account
-address and sequence number, then the account secret and submit the transaction.
+to set those flags.
 
 After setting up the issuer account you can send some amount of the regulated
 asset to a stellar account using the servers friendbot
@@ -200,14 +220,28 @@ SEP-8 [Action Required] section.
 }
 ```
 
+_Pending:_ this response means the user KYC could not be verified as approved
+nor rejected and was marked as "pending". As an arbitrary rule, this server is
+marking as "pending" all accounts whose email starts with "y". For more info
+read the SEP-8 [Pending] section.
+
+```json
+{
+  "status": "pending",
+  "error": "Your account could not be verified as approved nor rejected and was marked as pending. You will need staff authorization for operations above 500.00 GOAT."
+}
+```
+
 ### `POST /kyc-status/{CALLBACK_ID}`
 
 This endpoint is used for the extra action after `/tx-approve`, as described in
 the SEP-8 [Action Required] section.
 
-Currently an arbitrary criteria is implemented: email addresses starting with
-"x" will have the KYC automatically denied while all other emails will be
-accepted.
+Currently an arbitrary criteria is implemented:
+
+* email addresses starting with "x" will have the KYC automatically denied.
+* email addresses starting with "y" will have their KYC marked as pending.
+* all other emails will be accepted.
 
 _Note: you'll need to resubmit your transaction to
 [`/tx_approve`](#post-tx-approve) in order to verify if your KYC was approved._
@@ -238,6 +272,16 @@ If their KYC was rejected they should see a rejection response.
 {
   "status": "rejected",
   "error": "Your KYC was rejected and you're not authorized for operations above 500.00 GOAT."
+}
+```
+
+If their KYC was marked as pending they should see a pending response.
+**Response (pending for emails starting with "y"):**
+
+```json
+{
+  "status": "pending",
+  "error": "Your account could not be verified as approved nor rejected and was marked as pending. You will need staff authorization for operations above 500.00 GOAT."
 }
 ```
 
@@ -285,6 +329,19 @@ part of the [SEP-8] spec._
 }
 ```
 
+**Response (pending KYC):**
+
+```json
+{
+  "stellar_address": "GA2DMTP67JT4LQ4CFTUONFBFGKPO6VONW4LWJNOIY2WPRJLUV44MJZOK",
+  "callback_id":"e0d9243a-40cf-4baa-9575-913e6c98a12e",
+  "email_address": "ytest@test.com",
+  "created_at": "2021-03-26T09:35:06.907293-03:00",
+  "kyc_submitted_at": "2021-03-26T14:03:43.314334-03:00",
+  "pending_at": "2021-03-26T14:03:43.314334-03:00",
+}
+```
+
 ### `DELETE /kyc-status/{STELLAR_ADDRESS}`
 
 Deletes a stellar account from the list of KYCs. If the stellar address is not
@@ -307,3 +364,4 @@ the [SEP-8] spec._
 [Rejected]: https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0008.md#rejected
 [Revised]:https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0008.md#revised
 [Success]: https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0008.md#success
+[Pending]: https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0008.md#pending
