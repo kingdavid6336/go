@@ -3,10 +3,10 @@ package txnbuild
 import (
 	"fmt"
 
-	"github.com/stellar/go/amount"
-	"github.com/stellar/go/strkey"
-	"github.com/stellar/go/support/errors"
-	"github.com/stellar/go/xdr"
+	"github.com/stellar/go-stellar-sdk/amount"
+	"github.com/stellar/go-stellar-sdk/strkey"
+	"github.com/stellar/go-stellar-sdk/support/errors"
+	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
 // validateStellarPublicKey returns an error if a public key is invalid. Otherwise, it returns nil.
@@ -37,7 +37,7 @@ func validateStellarSignerKey(signerKey string) error {
 
 // validateStellarAsset checks if the asset supplied is a valid stellar Asset. It returns an error if the asset is
 // nil, has an invalid asset code or issuer.
-func validateStellarAsset(asset Asset) error {
+func validateStellarAsset(asset BasicAsset) error {
 	if asset == nil {
 		return errors.New("asset is undefined")
 	}
@@ -84,10 +84,31 @@ func validateAmount(n interface{}) error {
 	return nil
 }
 
+// validateSequenceNumber checks if the provided value is a valid sequence number, it returns an error if not.
+func validateSequenceNumber(sequenceNumber int64) error {
+	if sequenceNumber < 0 {
+		return errors.New("sequence number cannot be negative")
+	}
+	return nil
+}
+
+func validatePrice(p xdr.Price) error {
+	if p.N == 0 {
+		return errors.Errorf("price cannot be 0: %d/%d", p.N, p.D)
+	}
+	if p.D == 0 {
+		return errors.Errorf("price denominator cannot be 0: %d/%d", p.N, p.D)
+	}
+	if p.N < 0 || p.D < 0 {
+		return errors.Errorf("price cannot be negative: %d/%d", p.N, p.D)
+	}
+	return nil
+}
+
 // validateAssetCode checks if the provided asset is valid as an asset code.
 // It returns an error if the asset is invalid.
 // The asset must be non native (XLM) with a valid asset code.
-func validateAssetCode(asset Asset) error {
+func validateAssetCode(asset BasicAsset) error {
 	// Note: we are not using validateStellarAsset() function for AllowTrust operations because it requires the
 	//  following :
 	// - asset is non-native
@@ -111,7 +132,7 @@ func validateAssetCode(asset Asset) error {
 // validateChangeTrustAsset checks if the provided asset is valid for use in ChangeTrust operation.
 // It returns an error if the asset is invalid.
 // The asset must be non native (XLM) with a valid asset code and issuer.
-func validateChangeTrustAsset(asset Asset) error {
+func validateChangeTrustAsset(asset ChangeTrustAsset) error {
 	// Note: we are not using validateStellarAsset() function for ChangeTrust operations because it requires the
 	//  following :
 	// - asset is non-native
@@ -120,6 +141,14 @@ func validateChangeTrustAsset(asset Asset) error {
 	err := validateAssetCode(asset)
 	if err != nil {
 		return err
+	}
+
+	assetType, err := asset.GetType()
+	if err != nil {
+		return err
+	} else if assetType == AssetTypePoolShare {
+		// No issuer for these to validate.
+		return nil
 	}
 
 	err = validateStellarPublicKey(asset.GetIssuer())
@@ -133,9 +162,9 @@ func validateChangeTrustAsset(asset Asset) error {
 // validatePassiveOffer checks if the fields of a CreatePassiveOffer struct are valid.
 // It checks that the buying and selling assets are valid stellar assets, and that amount and price are valid.
 // It returns an error if any field is invalid.
-func validatePassiveOffer(buying, selling Asset, offerAmount, price string) error {
+func validatePassiveOffer(buying, selling Asset, offerAmount string, price xdr.Price) error {
 	// Note: see discussion on how this can be improved:
-	// https://github.com/stellar/go/pull/1707#discussion_r321508440
+	// https://github.com/stellar/go-stellar-sdk/pull/1707#discussion_r321508440
 	err := validateStellarAsset(buying)
 	if err != nil {
 		return NewValidationError("Buying", err.Error())
@@ -151,7 +180,7 @@ func validatePassiveOffer(buying, selling Asset, offerAmount, price string) erro
 		return NewValidationError("Amount", err.Error())
 	}
 
-	err = validateAmount(price)
+	err = validatePrice(price)
 	if err != nil {
 		return NewValidationError("Price", err.Error())
 	}
@@ -162,7 +191,7 @@ func validatePassiveOffer(buying, selling Asset, offerAmount, price string) erro
 // validateOffer checks if the fields of ManageBuyOffer or ManageSellOffer struct are valid.
 // It checks that the buying and selling assets are valid stellar assets, and that amount, price and offerID
 // are valid. It returns an error if any field is invalid.
-func validateOffer(buying, selling Asset, offerAmount, price string, offerID int64) error {
+func validateOffer(buying, selling Asset, offerAmount string, price xdr.Price, offerID int64) error {
 	err := validatePassiveOffer(buying, selling, offerAmount, price)
 	if err != nil {
 		return err
@@ -177,7 +206,7 @@ func validateOffer(buying, selling Asset, offerAmount, price string, offerID int
 
 // ValidationError is a custom error struct that holds validation errors of txnbuild's operation structs.
 type ValidationError struct {
-	Field   string // Field is the struct field on which the validation error occured.
+	Field   string // Field is the struct field on which the validation error occurred.
 	Message string // Message is the validation error message.
 }
 

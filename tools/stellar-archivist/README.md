@@ -14,7 +14,7 @@ It is much smaller and simpler than `stellar-core`, and is intended only for arc
 ## Installation
 
 ```
-$ go install github.com/stellar/go/tools/stellar-archivist
+$ go install github.com/stellar/go-stellar-sdk/tools/stellar-archivist
 ```
 
 ## Usage
@@ -45,6 +45,7 @@ Flags:
   -r, --recent            act on ledger-range difference between achives
       --s3region string   S3 region to connect to (default "us-east-1")
       --s3endpoint string S3 endpoint (default to AWS endpoint for selected region)
+      --skip-optional     skip optional (SCP) checkpoint files
       --thorough          decode and re-encode all buckets
       --verify            verify file contents
 

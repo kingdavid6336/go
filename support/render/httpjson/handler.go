@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"reflect"
 
-	"github.com/stellar/go/support/errors"
-	"github.com/stellar/go/support/http/httpdecode"
-	"github.com/stellar/go/support/render/problem"
+	"github.com/stellar/go-stellar-sdk/support/errors"
+	"github.com/stellar/go-stellar-sdk/support/http/httpdecode"
+	"github.com/stellar/go-stellar-sdk/support/render/problem"
 )
 
 var (
@@ -140,7 +140,7 @@ func ExecuteFunc(ctx context.Context, fn, param interface{}, cType contentType) 
 // functions with certain signatures.
 // The allowed function signature is as following:
 //
-//   func fn(ctx context.Context, an_optional_param) (at_most_two_return_values)
+//	func fn(ctx context.Context, an_optional_param) (at_most_two_return_values)
 //
 // The caller must provide a function with at least 1 input (request context)
 // and up to 2 inputs, and up to 2 return values. If there are two return

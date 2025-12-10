@@ -12,8 +12,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/stellar/go/support/errors"
-	"github.com/stellar/go/support/log"
+	"github.com/stellar/go-stellar-sdk/support/errors"
+	"github.com/stellar/go-stellar-sdk/support/log"
 )
 
 var extractBinName = regexp.MustCompile(`^(?P<bin>[a-z0-9-]+)-(?P<tag>.+)$`)
@@ -43,8 +43,11 @@ func main() {
 	if os.Getenv("TRAVIS_EVENT_TYPE") == "cron" {
 		buildNightlies()
 		os.Exit(0)
-	} else if os.Getenv("CIRCLE_TAG") != "" {
-		buildByTag()
+	} else if circleTag := os.Getenv("CIRCLE_TAG"); circleTag != "" {
+		buildByTag(circleTag)
+		os.Exit(0)
+	} else if ghTag := getGitHubTagName(); ghTag != "" {
+		buildByTag(ghTag)
 		os.Exit(0)
 	} else {
 		buildSnapshots()
@@ -54,12 +57,25 @@ func main() {
 	log.Info("nothing to do")
 }
 
-// package searches the `tools` and `services` packages of this repo to find
+func getGitHubTagName() string {
+	const githubTagRefPrefix = "refs/tags/"
+	ref := os.Getenv("GITHUB_REF")
+	if ref == "" {
+		// we are not in a github action
+		return ""
+	}
+	if !strings.HasPrefix(ref, githubTagRefPrefix) {
+		// we are not in a tag-triggered event
+		return ""
+	}
+	return strings.TrimPrefix(ref, githubTagRefPrefix)
+}
+
+// package searches the `tools` packages of this repo to find
 // the source directory.  This is used within the script to find the README and
 // other files that should be packaged with the binary.
 func binPkgNames() []string {
 	result := []string{}
-	result = append(result, binNamesForDir("services")...)
 	result = append(result, binNamesForDir("tools")...)
 	return result
 }
@@ -86,7 +102,7 @@ func build(pkg, dest, version, buildOS, buildArch string) {
 	rev := runOutput("git", "rev-parse", "HEAD")
 	versionString := version[1:] // Remove letter `v`
 	versionFlag := fmt.Sprintf(
-		"-X=github.com/stellar/go/support/app.version=%s-%s",
+		"-X=github.com/stellar/go-stellar-sdk/support/app.version=%s-%s",
 		versionString, rev,
 	)
 
@@ -145,15 +161,15 @@ func buildNightlies() {
 	}
 }
 
-func buildByTag() {
-	bin, version := extractFromTag(os.Getenv("CIRCLE_TAG"))
-	pkg := packageName(bin)
-	repo := repoName()
-
+func buildByTag(tag string) {
+	bin, version := extractFromTag(tag)
 	if bin == "" {
-		log.Info("could not extract info from CIRCLE_TAG: skipping artifact packaging")
+		log.Infof("non-conformant tag name %q: skipping artifact packaging", tag)
 		os.Exit(0)
 	}
+
+	pkg := packageName(bin)
+	repo := repoName()
 
 	// Don't build anything if no package can be found
 	if pkg == "" {
@@ -207,12 +223,11 @@ func buildSnapshots() {
 
 // extractFromTag extracts the name of the binary that should be packaged in the
 // course of execution this script as well as the version it should be packaged
-// as, based on the name of the tag in the CIRCLE_TAG environment variable.
+// as, based on the name of the tag.
 // Tags must be of the form `NAME-vSEMVER`, such as `horizon-v1.0.0` to be
 // matched by this function.
 //
-// In the event that the CIRCLE_TAG is missing or the match fails, an empty
-// string will be returned.
+// In the event the match fails, an empty string will be returned.
 func extractFromTag(tag string) (string, string) {
 	match := extractBinName.FindStringSubmatch(tag)
 	if match == nil {
@@ -259,12 +274,11 @@ func packageArchive(dest, buildOS string) {
 	}
 }
 
-// package searches the `tools` and `services` packages of this repo to find
+// package searches the `tools` packages of this repo to find
 // the source directory.  This is used within the script to find the README and
 // other files that should be packaged with the binary.
 func packageName(binName string) string {
 	targets := []string{
-		filepath.Join("services", binName),
 		filepath.Join("tools", binName),
 	}
 
@@ -301,7 +315,7 @@ func prepareDest(pkg, bin, version, os, arch string) string {
 
 	// make destination directories
 	run("mkdir", "-p", dest)
-	run("cp", "LICENSE-APACHE.txt", dest)
+	run("cp", "LICENSE", dest)
 	run("cp", "COPYING", dest)
 	run("cp", filepath.Join(pkg, "README.md"), dest)
 	run("cp", filepath.Join(pkg, "CHANGELOG.md"), dest)
@@ -334,7 +348,7 @@ func repoName() string {
 	if os.Getenv("REPO") != "" {
 		return os.Getenv("REPO")
 	}
-	return "github.com/stellar/go"
+	return "github.com/stellar/go-stellar-sdk"
 
 }
 

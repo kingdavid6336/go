@@ -9,15 +9,15 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/stellar/go/clients/horizonclient"
-	"github.com/stellar/go/network"
-	hProtocol "github.com/stellar/go/protocols/horizon"
-	"github.com/stellar/go/strkey"
-	"github.com/stellar/go/support/errors"
-	"github.com/stellar/go/txnbuild"
-	"github.com/stellar/go/xdr"
+	"github.com/stellar/go-stellar-sdk/clients/horizonclient"
+	"github.com/stellar/go-stellar-sdk/network"
+	hProtocol "github.com/stellar/go-stellar-sdk/protocols/horizon"
+	"github.com/stellar/go-stellar-sdk/strkey"
+	"github.com/stellar/go-stellar-sdk/support/errors"
+	"github.com/stellar/go-stellar-sdk/txnbuild"
+	"github.com/stellar/go-stellar-sdk/xdr"
 
-	"github.com/stellar/go/keypair"
+	"github.com/stellar/go-stellar-sdk/keypair"
 )
 
 // The account address of the TestNet "friendbot"
@@ -50,7 +50,7 @@ func InitKeys(n int) []Account {
 		}
 
 		jsonAccounts, err2 := json.MarshalIndent(accounts, "", "  ")
-		dieIfError("problem marshalling json accounts", err2)
+		dieIfError("problem marshaling json accounts", err2)
 		err = ioutil.WriteFile(accountsFile, jsonAccounts, 0644)
 		dieIfError("problem writing json accounts file", err)
 		log.Info("Wrote keypairs to local file ", accountsFile)
@@ -86,7 +86,7 @@ func Reset(client *horizonclient.Client, keys []Account) {
 		}
 
 		// It exists - so we will proceed to deconstruct any existing account entries, and then merge it
-		// See https://www.stellar.org/developers/guides/concepts/ledger.html#ledger-entries
+		// See https://developers.stellar.org/docs/glossary/ledger/#ledger-entries
 		log.Info("Found testnet account with ID:", k.HAccount.ID)
 
 		// Find any offers that need deleting...
@@ -131,7 +131,9 @@ func Reset(client *horizonclient.Client, keys []Account) {
 
 			// Delete the now-empty trustline...
 			log.Infof("Deleting trustline for asset %s:%s...", b.Code, b.Issuer)
-			txe, err = deleteTrustline(k.HAccount, asset, k)
+			ctAsset, err := asset.ToChangeTrustAsset()
+			dieIfError("problem building deleteTrustline op", err)
+			txe, err = deleteTrustline(k.HAccount, ctAsset, k)
 			dieIfError("problem building deleteTrustline op", err)
 			resp = submit(client, txe)
 			log.Debug(resp)
@@ -213,7 +215,7 @@ func bumpSequence(source *hProtocol.Account, seqNum int64, signer Account) (stri
 			IncrementSequenceNum: true,
 			Operations:           []txnbuild.Operation{&bumpSequenceOp},
 			BaseFee:              txnbuild.MinBaseFee,
-			Timebounds:           txnbuild.NewTimeout(300),
+			Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(300)},
 		},
 	)
 	if err != nil {
@@ -243,7 +245,7 @@ func createAccount(source *hProtocol.Account, dest string, signer Account) (stri
 			IncrementSequenceNum: true,
 			Operations:           []txnbuild.Operation{&createAccountOp},
 			BaseFee:              txnbuild.MinBaseFee,
-			Timebounds:           txnbuild.NewTimeout(300),
+			Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(300)},
 		},
 	)
 	if err != nil {
@@ -272,7 +274,7 @@ func deleteData(source *hProtocol.Account, dataKey string, signer Account) (stri
 			IncrementSequenceNum: true,
 			Operations:           []txnbuild.Operation{&manageDataOp},
 			BaseFee:              txnbuild.MinBaseFee,
-			Timebounds:           txnbuild.NewTimeout(300),
+			Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(300)},
 		},
 	)
 	if err != nil {
@@ -303,7 +305,7 @@ func payment(source *hProtocol.Account, dest, amount string, asset txnbuild.Asse
 			IncrementSequenceNum: true,
 			Operations:           []txnbuild.Operation{&paymentOp},
 			BaseFee:              txnbuild.MinBaseFee,
-			Timebounds:           txnbuild.NewTimeout(300),
+			Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(300)},
 		},
 	)
 	if err != nil {
@@ -321,7 +323,7 @@ func payment(source *hProtocol.Account, dest, amount string, asset txnbuild.Asse
 	return txeBase64, nil
 }
 
-func deleteTrustline(source *hProtocol.Account, asset txnbuild.Asset, signer Account) (string, error) {
+func deleteTrustline(source *hProtocol.Account, asset txnbuild.ChangeTrustAsset, signer Account) (string, error) {
 	deleteTrustline := txnbuild.RemoveTrustlineOp(asset)
 
 	tx, err := txnbuild.NewTransaction(
@@ -330,7 +332,7 @@ func deleteTrustline(source *hProtocol.Account, asset txnbuild.Asset, signer Acc
 			IncrementSequenceNum: true,
 			Operations:           []txnbuild.Operation{&deleteTrustline},
 			BaseFee:              txnbuild.MinBaseFee,
-			Timebounds:           txnbuild.NewTimeout(300),
+			Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(300)},
 		},
 	)
 	if err != nil {
@@ -360,7 +362,7 @@ func deleteOffer(source *hProtocol.Account, offerID int64, signer Account) (stri
 			IncrementSequenceNum: true,
 			Operations:           []txnbuild.Operation{&deleteOffer},
 			BaseFee:              txnbuild.MinBaseFee,
-			Timebounds:           txnbuild.NewTimeout(300),
+			Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(300)},
 		},
 	)
 	if err != nil {
@@ -389,7 +391,7 @@ func mergeAccount(source *hProtocol.Account, destAddress string, signer Account)
 			IncrementSequenceNum: true,
 			Operations:           []txnbuild.Operation{&accountMerge},
 			BaseFee:              txnbuild.MinBaseFee,
-			Timebounds:           txnbuild.NewTimeout(300),
+			Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(300)},
 		},
 	)
 	if err != nil {

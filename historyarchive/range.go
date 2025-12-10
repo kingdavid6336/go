@@ -6,8 +6,9 @@ package historyarchive
 
 import (
 	"fmt"
-	"sort"
 	"strings"
+
+	"golang.org/x/exp/slices"
 )
 
 const DefaultCheckpointFrequency = uint32(64)
@@ -39,6 +40,7 @@ func (c CheckpointManager) IsCheckpoint(i uint32) bool {
 	return (i+1)%c.checkpointFreq == 0
 }
 
+// PrevCheckpoint returns the checkpoint ledger preceding `i`.
 func (c CheckpointManager) PrevCheckpoint(i uint32) uint32 {
 	freq := c.checkpointFreq
 	if i < freq {
@@ -47,6 +49,7 @@ func (c CheckpointManager) PrevCheckpoint(i uint32) uint32 {
 	return (((i + 1) / freq) * freq) - 1
 }
 
+// NextCheckpoint returns the checkpoint ledger following `i`.
 func (c CheckpointManager) NextCheckpoint(i uint32) uint32 {
 	if i == 0 {
 		return c.checkpointFreq - 1
@@ -54,10 +57,8 @@ func (c CheckpointManager) NextCheckpoint(i uint32) uint32 {
 	freq := uint64(c.checkpointFreq)
 	v := uint64(i)
 	n := (((v + freq) / freq) * freq) - 1
-	if n >= 0xffffffff {
-		return 0xffffffff
-	}
-	return uint32(n)
+
+	return uint32(min(n, 0xffffffff))
 }
 
 // GetCheckPoint gets the checkpoint containing information about the given ledger sequence
@@ -80,9 +81,7 @@ func (c CheckpointManager) GetCheckpointRange(i uint32) Range {
 }
 
 func (c CheckpointManager) MakeRange(low uint32, high uint32) Range {
-	if high < low {
-		high = low
-	}
+	high = max(high, low)
 	return Range{
 		Low:  c.PrevCheckpoint(low),
 		High: c.NextCheckpoint(high),
@@ -90,14 +89,8 @@ func (c CheckpointManager) MakeRange(low uint32, high uint32) Range {
 }
 
 func (r Range) clamp(other Range, cManager CheckpointManager) Range {
-	low := r.Low
-	high := r.High
-	if low < other.Low {
-		low = other.Low
-	}
-	if high > other.High {
-		high = other.High
-	}
+	low := max(r.Low, other.Low)
+	high := min(r.High, other.High)
 	return cManager.MakeRange(low, high)
 }
 
@@ -123,24 +116,21 @@ func (r Range) SizeInCheckPoints(cManager CheckpointManager) int {
 func (r Range) collapsedString() string {
 	if r.Low == r.High {
 		return fmt.Sprintf("0x%8.8x", r.Low)
-	} else {
-		return fmt.Sprintf("[0x%8.8x-0x%8.8x]", r.Low, r.High)
 	}
+
+	return fmt.Sprintf("[0x%8.8x-0x%8.8x]", r.Low, r.High)
 }
 
 func (r Range) InRange(sequence uint32) bool {
 	return sequence >= r.Low && sequence <= r.High
 }
 
-type byUint32 []uint32
-
-func (a byUint32) Len() int           { return len(a) }
-func (a byUint32) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a byUint32) Less(i, j int) bool { return a[i] < a[j] }
+func (r Range) Size() uint32 {
+	return 1 + (r.High - r.Low)
+}
 
 func fmtRangeList(vs []uint32, cManager CheckpointManager) string {
-
-	sort.Sort(byUint32(vs))
+	slices.Sort(vs)
 
 	s := make([]string, 0, 10)
 	var curr *Range

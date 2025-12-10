@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	hProtocol "github.com/stellar/go/protocols/horizon"
-	"github.com/stellar/go/support/http/httptest"
+	hProtocol "github.com/stellar/go-stellar-sdk/protocols/horizon"
+	"github.com/stellar/go-stellar-sdk/support/http/httptest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -38,6 +38,13 @@ func TestTransactionRequestBuildUrl(t *testing.T) {
 	// It should return valid ledger transactions endpoint and no errors
 	require.NoError(t, err)
 	assert.Equal(t, "ledgers/123/transactions", endpoint)
+
+	tr = TransactionRequest{ForLiquidityPool: "123"}
+	endpoint, err = tr.BuildURL()
+
+	// It should return valid liquidity pool transactions endpoint and no errors
+	require.NoError(t, err)
+	assert.Equal(t, "liquidity_pools/123/transactions", endpoint)
 
 	tr = TransactionRequest{forTransactionHash: "123"}
 	endpoint, err = tr.BuildURL()

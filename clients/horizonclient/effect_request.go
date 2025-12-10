@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/stellar/go/protocols/horizon/effects"
-	"github.com/stellar/go/support/errors"
+	"github.com/stellar/go-stellar-sdk/protocols/horizon/effects"
+	"github.com/stellar/go-stellar-sdk/support/errors"
 )
 
 // EffectHandler is a function that is called when a new effect is received
@@ -17,7 +17,7 @@ type EffectHandler func(effects.Effect)
 // BuildURL creates the endpoint to be queried based on the data in the EffectRequest struct.
 // If no data is set, it defaults to the build the URL for all effects
 func (er EffectRequest) BuildURL() (endpoint string, err error) {
-	nParams := countParams(er.ForAccount, er.ForLedger, er.ForOperation, er.ForTransaction)
+	nParams := countParams(er.ForAccount, er.ForLedger, er.ForLiquidityPool, er.ForOperation, er.ForTransaction)
 
 	if nParams > 1 {
 		return endpoint, errors.New("invalid request: too many parameters")
@@ -31,6 +31,10 @@ func (er EffectRequest) BuildURL() (endpoint string, err error) {
 
 	if er.ForLedger != "" {
 		endpoint = fmt.Sprintf("ledgers/%s/effects", er.ForLedger)
+	}
+
+	if er.ForLiquidityPool != "" {
+		endpoint = fmt.Sprintf("liquidity_pools/%s/effects", er.ForLiquidityPool)
 	}
 
 	if er.ForOperation != "" {

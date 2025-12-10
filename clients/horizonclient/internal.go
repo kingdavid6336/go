@@ -1,27 +1,40 @@
 package horizonclient
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
-	"github.com/stellar/go/support/errors"
+	"github.com/stellar/go-stellar-sdk/protocols/horizon"
+	"github.com/stellar/go-stellar-sdk/support/clock"
+	"github.com/stellar/go-stellar-sdk/support/errors"
 )
 
 // decodeResponse decodes the response from a request to a horizon server
-func decodeResponse(resp *http.Response, object interface{}, hc *Client) (err error) {
+func decodeResponse(resp *http.Response, object interface{}, horizonUrl string, clock *clock.Clock) (err error) {
 	defer resp.Body.Close()
+	if object == nil {
+		// Nothing to decode
+		return nil
+	}
 	decoder := json.NewDecoder(resp.Body)
 
-	u, err := url.Parse(hc.HorizonURL)
+	u, err := url.Parse(horizonUrl)
 	if err != nil {
-		return errors.Errorf("unable to parse the provided horizon url: %s", hc.HorizonURL)
+		return errors.Errorf("unable to parse the provided horizon url: %s", horizonUrl)
 	}
-	setCurrentServerTime(u.Hostname(), resp.Header["Date"], hc)
+	setCurrentServerTime(u.Hostname(), resp.Header["Date"], clock)
 
-	if !(resp.StatusCode >= 200 && resp.StatusCode < 300) {
+	if isStatusCodeAnError(resp.StatusCode) {
+		if isAsyncTxSubRequest(resp) {
+			return decodeAsyncTxSubResponse(resp, object)
+		}
+
 		horizonError := &Error{
 			Response: resp,
 		}
@@ -31,12 +44,47 @@ func decodeResponse(resp *http.Response, object interface{}, hc *Client) (err er
 		}
 		return horizonError
 	}
-
 	err = decoder.Decode(&object)
 	if err != nil {
 		return errors.Wrap(err, "error decoding response")
 	}
 	return
+}
+
+func isStatusCodeAnError(statusCode int) bool {
+	return !(statusCode >= 200 && statusCode < 300)
+}
+
+func isAsyncTxSubRequest(resp *http.Response) bool {
+	return resp.Request != nil && resp.Request.URL != nil && resp.Request.URL.Path == "/transactions_async"
+}
+
+func decodeAsyncTxSubResponse(resp *http.Response, object interface{}) error {
+	// We need to read the entire body in order to create 2 decoders later.
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return errors.Wrap(err, "error reading response body")
+	}
+
+	// The first decoder converts the response to AsyncTransactionSubmissionResponse and checks
+	// the hash of the transaction. If the response was not a valid AsyncTransactionSubmissionResponse object,
+	// the hash of the converted object will be empty.
+	asyncRespDecoder := json.NewDecoder(bytes.NewReader(bodyBytes))
+	err = asyncRespDecoder.Decode(&object)
+	if asyncResp, ok := object.(*horizon.AsyncTransactionSubmissionResponse); err == nil && ok && asyncResp.Hash != "" {
+		return nil
+	}
+
+	// Create a new reader for the second decoding. The second decoder decodes to Horizon.Problem object.
+	problemDecoder := json.NewDecoder(bytes.NewReader(bodyBytes))
+	horizonError := Error{
+		Response: resp,
+	}
+	err = problemDecoder.Decode(&horizonError.Problem)
+	if err != nil {
+		return errors.Wrap(err, "error decoding horizon error")
+	}
+	return horizonError
 }
 
 // countParams counts the number of parameters provided
@@ -100,6 +148,10 @@ func addQueryParams(params ...interface{}) string {
 			if param != "" {
 				query.Add("join", string(param))
 			}
+		case reserves:
+			if len(param) > 0 {
+				query.Add("reserves", strings.Join(param, ","))
+			}
 		case map[string]string:
 			for key, value := range param {
 				if value != "" {
@@ -115,7 +167,7 @@ func addQueryParams(params ...interface{}) string {
 }
 
 // setCurrentServerTime saves the current time returned by a horizon server
-func setCurrentServerTime(host string, serverDate []string, hc *Client) {
+func setCurrentServerTime(host string, serverDate []string, clock *clock.Clock) {
 	if len(serverDate) == 0 {
 		return
 	}
@@ -124,16 +176,16 @@ func setCurrentServerTime(host string, serverDate []string, hc *Client) {
 		return
 	}
 	serverTimeMapMutex.Lock()
-	ServerTimeMap[host] = ServerTimeRecord{ServerTime: st.UTC().Unix(), LocalTimeRecorded: hc.clock.Now().UTC().Unix()}
+	ServerTimeMap[host] = ServerTimeRecord{ServerTime: st.UTC().Unix(), LocalTimeRecorded: clock.Now().UTC().Unix()}
 	serverTimeMapMutex.Unlock()
 }
 
 // currentServerTime returns the current server time for a given horizon server
 func currentServerTime(host string, currentTimeUTC int64) int64 {
 	serverTimeMapMutex.Lock()
-	st := ServerTimeMap[host]
+	st, has := ServerTimeMap[host]
 	serverTimeMapMutex.Unlock()
-	if &st == nil {
+	if !has {
 		return 0
 	}
 

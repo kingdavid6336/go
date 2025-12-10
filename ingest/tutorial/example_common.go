@@ -3,7 +3,8 @@ package main
 import (
 	"fmt"
 
-	"github.com/stellar/go/ingest/ledgerbackend"
+	"github.com/stellar/go-stellar-sdk/ingest/ledgerbackend"
+	"github.com/stellar/go-stellar-sdk/network"
 )
 
 var (
@@ -11,12 +12,8 @@ var (
 )
 
 func captiveCoreConfig() ledgerbackend.CaptiveCoreConfig {
-	archiveURLs := []string{
-		"https://history.stellar.org/prd/core-testnet/core_testnet_001",
-		"https://history.stellar.org/prd/core-testnet/core_testnet_002",
-		"https://history.stellar.org/prd/core-testnet/core_testnet_003",
-	}
-	networkPassphrase := "Test SDF Network ; September 2015"
+	archiveURLs := network.TestNetworkhistoryArchiveURLs
+	networkPassphrase := network.TestNetworkPassphrase
 	captiveCoreToml, err := ledgerbackend.NewCaptiveCoreToml(ledgerbackend.CaptiveCoreTomlParams{
 		NetworkPassphrase:  networkPassphrase,
 		HistoryArchiveURLs: archiveURLs,

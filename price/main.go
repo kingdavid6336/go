@@ -13,7 +13,7 @@ import (
 	"regexp"
 	"strconv"
 
-	"github.com/stellar/go/xdr"
+	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
 var (
@@ -36,6 +36,15 @@ var (
 // integer..
 func Parse(v string) (xdr.Price, error) {
 	return continuedFraction(v)
+}
+
+// MustParse is like Parse except that it panics on errors.
+func MustParse(v string) xdr.Price {
+	result, err := Parse(v)
+	if err != nil {
+		panic(err)
+	}
+	return result
 }
 
 // continuedFraction calculates and returns the best rational approximation of
@@ -113,23 +122,27 @@ func floor(n *big.Rat) *big.Rat {
 	return f
 }
 
-//StringFromFloat64 will format a float64 to decimal representation with 7 digits after the decimal point
+// StringFromFloat64 will format a float64 to decimal representation with 7 digits after the decimal point
 func StringFromFloat64(v float64) string {
 	return strconv.FormatFloat(v, 'f', 7, 64)
 }
 
-// ConvertToBuyingUnits uses special rounding logic to multiply the amount by the price and returns (buyingUnits, sellingUnits) that can be taken from the offer
+// ConvertToBuyingUnits uses special rounding logic to multiply the amount by
+// the price and returns (buyingUnits, sellingUnits) that can be taken from the
+// offer
 //
-// offerSellingBound = (offer.price.n > offer.price.d)
-// 	? offer.amount : ceil(floor(offer.amount * offer.price) / offer.price)
-// pathPaymentAmountBought = min(offerSellingBound, pathPaymentBuyingBound)
-// pathPaymentAmountSold = ceil(pathPaymentAmountBought * offer.price)
+//	offerSellingBound = (offer.price.n > offer.price.d)
+//	    ? offer.amount
+//	    : ceil(floor(offer.amount * offer.price) / offer.price)
+//	pathPaymentAmountBought = min(offerSellingBound, pathPaymentBuyingBound)
+//	pathPaymentAmountSold = ceil(pathPaymentAmountBought * offer.price)
 //
-// offer.amount = amount selling
-// offerSellingBound = roundingCorrectedOffer
-// pathPaymentBuyingBound = needed
-// pathPaymentAmountBought = what we are consuming from offer
-// pathPaymentAmountSold = amount we are giving to the buyer
+//	offer.amount = amount selling
+//	offerSellingBound = roundingCorrectedOffer
+//	pathPaymentBuyingBound = needed
+//	pathPaymentAmountBought = what we are consuming from offer
+//	pathPaymentAmountSold = amount we are giving to the buyer
+//
 // Sell units = pathPaymentAmountSold and buy units = pathPaymentAmountBought
 //
 // this is how we do floor and ceiling in stellar-core:
@@ -204,12 +217,4 @@ func mulFractionRoundUp(x int64, n int64, d int64) (int64, error) {
 	}
 
 	return int64(q), nil
-}
-
-// min impl for int64
-func min(x int64, y int64) int64 {
-	if x <= y {
-		return x
-	}
-	return y
 }

@@ -22,7 +22,7 @@ func TestAllowTrustValidateAsset(t *testing.T) {
 		TransactionParams{
 			SourceAccount: &sourceAccount,
 			Operations:    []Operation{&allowTrust},
-			Timebounds:    NewInfiniteTimeout(),
+			Preconditions: Preconditions{TimeBounds: NewInfiniteTimeout()},
 			BaseFee:       MinBaseFee,
 		},
 	)
@@ -48,7 +48,7 @@ func TestAllowTrustValidateTrustor(t *testing.T) {
 		TransactionParams{
 			SourceAccount: &sourceAccount,
 			Operations:    []Operation{&allowTrust},
-			Timebounds:    NewInfiniteTimeout(),
+			Preconditions: Preconditions{TimeBounds: NewInfiniteTimeout()},
 			BaseFee:       MinBaseFee,
 		},
 	)
@@ -65,7 +65,7 @@ func TestAllowTrustRoundtrip(t *testing.T) {
 		Type:          CreditAsset{"USD", ""},
 		Authorize:     true,
 	}
-	testOperationsMarshallingRoundtrip(t, []Operation{&allowTrust}, false)
+	testOperationsMarshalingRoundtrip(t, []Operation{&allowTrust}, false)
 
 	// with muxed accounts
 	allowTrust = AllowTrust{
@@ -74,5 +74,5 @@ func TestAllowTrustRoundtrip(t *testing.T) {
 		Type:          CreditAsset{"USD", ""},
 		Authorize:     true,
 	}
-	testOperationsMarshallingRoundtrip(t, []Operation{&allowTrust}, true)
+	testOperationsMarshalingRoundtrip(t, []Operation{&allowTrust}, true)
 }

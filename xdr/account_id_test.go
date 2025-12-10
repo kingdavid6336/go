@@ -4,15 +4,10 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	. "github.com/stellar/go/xdr"
+	. "github.com/stellar/go-stellar-sdk/xdr"
 )
 
 var _ = Describe("xdr.AccountId#Address()", func() {
-	It("returns an empty string when account id is nil", func() {
-		addy := (*AccountId)(nil).Address()
-		Expect(addy).To(Equal(""))
-	})
-
 	It("returns a strkey string when account id is valid", func() {
 		var aid AccountId
 		err := aid.SetAddress("GCR22L3WS7TP72S4Z27YTO6JIQYDJK2KLS2TQNHK6Y7XYPA3AGT3X4FH")
@@ -48,7 +43,8 @@ var _ = Describe("xdr.AccountId#LedgerKey()", func() {
 		err := aid.SetAddress("GCR22L3WS7TP72S4Z27YTO6JIQYDJK2KLS2TQNHK6Y7XYPA3AGT3X4FH")
 		Expect(err).ShouldNot(HaveOccurred())
 
-		key := aid.LedgerKey()
+		key, err := aid.LedgerKey()
+		Expect(err).ShouldNot(HaveOccurred())
 		packed := key.MustAccount().AccountId
 		Expect(packed.Equals(aid)).To(BeTrue())
 	})

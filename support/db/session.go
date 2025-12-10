@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	go_errors "errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -10,50 +11,79 @@ import (
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/jmoiron/sqlx"
-	"github.com/stellar/go/support/db/sqlutils"
-	"github.com/stellar/go/support/errors"
-	"github.com/stellar/go/support/log"
+	"github.com/lib/pq"
+
+	"github.com/stellar/go-stellar-sdk/support/db/sqlutils"
+	"github.com/stellar/go-stellar-sdk/support/errors"
+	"github.com/stellar/go-stellar-sdk/support/log"
 )
 
+var DeadlineCtxKey = CtxKey("deadline")
+
+func noop() {}
+
+// context() checks if there is a override on the context timeout which is configured using DeadlineCtxKey.
+// If the override exists, we return a new context with the desired deadline. Otherwise, we return the
+// original context.
+// Note that the override will not be applied if requestCtx has already been terminated.
+// The timeout can be disabled by setting the DeadlineCtxKey value to a zero time.Time value,
+// in that case the query will never be canceled.
+func (s *Session) context(requestCtx context.Context) (context.Context, context.CancelFunc, error) {
+	var ctx context.Context
+	var cancel context.CancelFunc
+
+	// if there is no DeadlineCtxKey value in the context we default to using the request context.
+	// this case is expected during ingestion where we don't want any queries to be canceled unless
+	// horizon is shutting down.
+	deadline, ok := requestCtx.Value(&DeadlineCtxKey).(time.Time)
+	if !ok {
+		return requestCtx, noop, nil
+	}
+
+	// if requestCtx is already terminated don't proceed with the db statement
+	if requestCtx.Err() != nil {
+		return requestCtx, nil, requestCtx.Err()
+	}
+
+	if deadline.IsZero() {
+		ctx, cancel = context.Background(), noop
+	} else {
+		ctx, cancel = context.WithDeadline(context.Background(), deadline)
+	}
+	return ctx, cancel, nil
+}
+
 // Begin binds this session to a new transaction.
-func (s *Session) Begin() error {
-	if s.tx != nil {
-		return errors.New("already in transaction")
-	}
-
-	tx, err := s.DB.BeginTxx(context.Background(), nil)
-	if err != nil {
-		if s.cancelled(err) {
-			return ErrCancelled
-		}
-
-		return errors.Wrap(err, "beginx failed")
-	}
-	log.Debug("sql: begin")
-	s.tx = tx
-	s.txOptions = nil
-	return nil
+func (s *Session) Begin(ctx context.Context) error {
+	return s.BeginTx(ctx, nil)
 }
 
 // BeginTx binds this session to a new transaction which is configured with the
 // given transaction options
-func (s *Session) BeginTx(opts *sql.TxOptions) error {
+func (s *Session) BeginTx(ctx context.Context, opts *sql.TxOptions) error {
 	if s.tx != nil {
 		return errors.New("already in transaction")
 	}
-
-	tx, err := s.DB.BeginTxx(context.Background(), opts)
+	ctx, cancel, err := s.context(ctx)
 	if err != nil {
-		if s.cancelled(err) {
-			return ErrCancelled
+		return err
+	}
+
+	tx, err := s.DB.BeginTxx(ctx, opts)
+	if err != nil {
+		if knownErr := s.handleError(err, ctx); knownErr != nil {
+			cancel()
+			return knownErr
 		}
 
+		cancel()
 		return errors.Wrap(err, "beginTx failed")
 	}
 	log.Debug("sql: begin")
 
 	s.tx = tx
 	s.txOptions = opts
+	s.txCancel = cancel
 	return nil
 }
 
@@ -91,6 +121,12 @@ func (s *Session) Commit() error {
 	log.Debug("sql: commit")
 	s.tx = nil
 	s.txOptions = nil
+	s.txCancel()
+	s.txCancel = nil
+
+	if knownErr := s.handleError(err, context.Background()); knownErr != nil {
+		return knownErr
+	}
 	return err
 }
 
@@ -106,14 +142,17 @@ func (s *Session) DeleteRange(
 	start, end int64,
 	table string,
 	idCol string,
-) error {
+) (int64, error) {
 	del := sq.Delete(table).Where(
 		fmt.Sprintf("%s >= ? AND %s < ?", idCol, idCol),
 		start,
 		end,
 	)
-	_, err := s.Exec(ctx, del)
-	return err
+	result, err := s.Exec(ctx, del)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 // Get runs `query`, setting the first result found on `dest`, if
@@ -129,7 +168,13 @@ func (s *Session) Get(ctx context.Context, dest interface{}, query sq.Sqlizer) e
 // GetRaw runs `query` with `args`, setting the first result found on
 // `dest`, if any.
 func (s *Session) GetRaw(ctx context.Context, dest interface{}, query string, args ...interface{}) error {
-	query, err := s.ReplacePlaceholders(query)
+	ctx, cancel, err := s.context(ctx)
+	if err != nil {
+		return err
+	}
+	defer cancel()
+
+	query, err = s.ReplacePlaceholders(query)
 	if err != nil {
 		return errors.Wrap(err, "replace placeholders failed")
 	}
@@ -142,8 +187,8 @@ func (s *Session) GetRaw(ctx context.Context, dest interface{}, query string, ar
 		return nil
 	}
 
-	if s.cancelled(err) {
-		return ErrCancelled
+	if knownErr := s.handleError(err, ctx); knownErr != nil {
+		return knownErr
 	}
 
 	if s.NoRows(err) {
@@ -179,7 +224,7 @@ func (s *Session) Exec(ctx context.Context, query sq.Sqlizer) (sql.Result, error
 // ExecAll runs all sql commands in `script` against `r` within a single
 // transaction.
 func (s *Session) ExecAll(ctx context.Context, script string) error {
-	err := s.Begin()
+	err := s.Begin(ctx)
 	if err != nil {
 		return err
 	}
@@ -198,7 +243,13 @@ func (s *Session) ExecAll(ctx context.Context, script string) error {
 
 // ExecRaw runs `query` with `args`
 func (s *Session) ExecRaw(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
-	query, err := s.ReplacePlaceholders(query)
+	ctx, cancel, err := s.context(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
+
+	query, err = s.ReplacePlaceholders(query)
 	if err != nil {
 		return nil, errors.Wrap(err, "replace placeholders failed")
 	}
@@ -211,8 +262,8 @@ func (s *Session) ExecRaw(ctx context.Context, query string, args ...interface{}
 		return result, nil
 	}
 
-	if s.cancelled(err) {
-		return nil, ErrCancelled
+	if knownErr := s.handleError(err, ctx); knownErr != nil {
+		return nil, knownErr
 	}
 
 	if s.NoRows(err) {
@@ -228,13 +279,67 @@ func (s *Session) NoRows(err error) bool {
 	return err == sql.ErrNoRows
 }
 
-// Cancelled returns true if the provided error resulted from a cancel.
-func (s *Session) cancelled(err error) bool {
-	return strings.Contains(err.Error(), "pq: canceling statement due to user request")
+func (s *Session) AddErrorHandler(handler ErrorHandlerFunc) {
+	s.errorHandlers = append(s.errorHandlers, handler)
+}
+
+// handleError does housekeeping on errors from db.
+// dbErr - the libpq client error
+// ctx -   the calling context
+//
+// tries to replace dbErr with horizon package error, returns a new error if the err is known.
+// invokes any additional error handlers that may have been
+// added to the session, passing the caller's context
+func (s *Session) handleError(dbErr error, ctx context.Context) error {
+	if dbErr == nil {
+		return nil
+	}
+
+	for _, handler := range s.errorHandlers {
+		handler(dbErr, ctx)
+	}
+
+	var dbErrorCode pq.ErrorCode
+	var pqErr *pq.Error
+
+	// if libpql sends to server, and then any server side error is reported,
+	// libpq passes back only an pq.ErrorCode from method call
+	// even if the caller context generates a cancel/deadline error during the server trip,
+	// libpq will only return an instance of pq.ErrorCode as a non-wrapped error
+	if go_errors.As(dbErr, &pqErr) {
+		dbErrorCode = pqErr.Code
+	}
+
+	switch {
+	case strings.Contains(dbErr.Error(), "pq: canceling statement due to conflict with recovery"):
+		return ErrConflictWithRecovery
+	case strings.Contains(dbErr.Error(), "driver: bad connection"):
+		return ErrBadConnection
+	case strings.Contains(dbErr.Error(), "transaction has already been committed or rolled back"):
+		return ErrAlreadyRolledback
+	case go_errors.Is(ctx.Err(), context.Canceled):
+		// when horizon's context is cancelled by it's upstream api client,
+		// it will propagate to here and libpq will emit a wrapped err that has the cancel err
+		return ErrCancelled
+	case go_errors.Is(ctx.Err(), context.DeadlineExceeded):
+		// when horizon's context times out(it's set to app connection-timeout),
+		// it will trigger libpq to emit a wrapped err that has the deadline err
+		return ErrTimeout
+	case dbErrorCode == "57014":
+		// https://www.postgresql.org/docs/12/errcodes-appendix.html, query_canceled
+		// this code can be generated for multiple cases,
+		// by libpq sending a signal to server when it experiences a context cancel/deadline
+		// or it could happen based on just server statement_timeout setting
+		// since we check the context cancel/deadline err state first, getting here means
+		// this can only be from a statement timeout
+		return ErrStatementTimeout
+	default:
+		return nil
+	}
 }
 
 // Query runs `query`, returns a *sqlx.Rows instance
-func (s *Session) Query(ctx context.Context, query sq.Sqlizer) (*sqlx.Rows, error) {
+func (s *Session) Query(ctx context.Context, query sq.Sqlizer) (*Rows, error) {
 	sql, args, err := s.build(query)
 	if err != nil {
 		return nil, err
@@ -242,10 +347,26 @@ func (s *Session) Query(ctx context.Context, query sq.Sqlizer) (*sqlx.Rows, erro
 	return s.QueryRaw(ctx, sql, args...)
 }
 
+type Rows struct {
+	sqlx.Rows
+	cancel context.CancelFunc
+}
+
+func (r *Rows) Close() error {
+	defer r.cancel()
+	return r.Rows.Close()
+}
+
 // QueryRaw runs `query` with `args`
-func (s *Session) QueryRaw(ctx context.Context, query string, args ...interface{}) (*sqlx.Rows, error) {
-	query, err := s.ReplacePlaceholders(query)
+func (s *Session) QueryRaw(ctx context.Context, query string, args ...interface{}) (*Rows, error) {
+	ctx, cancel, err := s.context(ctx)
 	if err != nil {
+		return nil, err
+	}
+
+	query, err = s.ReplacePlaceholders(query)
+	if err != nil {
+		cancel()
 		return nil, errors.Wrap(err, "replace placeholders failed")
 	}
 
@@ -254,11 +375,15 @@ func (s *Session) QueryRaw(ctx context.Context, query string, args ...interface{
 	s.log(ctx, "query", start, query, args)
 
 	if err == nil {
-		return result, nil
+		return &Rows{
+			Rows:   *result,
+			cancel: cancel,
+		}, nil
 	}
+	defer cancel()
 
-	if s.cancelled(err) {
-		return nil, ErrCancelled
+	if knownErr := s.handleError(err, ctx); knownErr != nil {
+		return nil, knownErr
 	}
 
 	if s.NoRows(err) {
@@ -290,6 +415,12 @@ func (s *Session) Rollback() error {
 	log.Debug("sql: rollback")
 	s.tx = nil
 	s.txOptions = nil
+	s.txCancel()
+	s.txCancel = nil
+
+	if knownErr := s.handleError(err, context.Background()); knownErr != nil {
+		return knownErr
+	}
 	return err
 }
 
@@ -317,8 +448,14 @@ func (s *Session) SelectRaw(
 	query string,
 	args ...interface{},
 ) error {
+	ctx, cancel, err := s.context(ctx)
+	if err != nil {
+		return err
+	}
+	defer cancel()
+
 	s.clearSliceIfPossible(dest)
-	query, err := s.ReplacePlaceholders(query)
+	query, err = s.ReplacePlaceholders(query)
 	if err != nil {
 		return errors.Wrap(err, "replace placeholders failed")
 	}
@@ -331,8 +468,8 @@ func (s *Session) SelectRaw(
 		return nil
 	}
 
-	if s.cancelled(err) {
-		return ErrCancelled
+	if knownErr := s.handleError(err, ctx); knownErr != nil {
+		return knownErr
 	}
 
 	if s.NoRows(err) {

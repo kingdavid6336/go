@@ -3,10 +3,8 @@ Package horizonclient provides client access to a Horizon server, allowing an ap
 
 This library provides an interface to the Stellar Horizon service. It supports the building of Go applications on
 top of the Stellar network (https://www.stellar.org/). Transactions may be constructed using the sister package to
-this one, txnbuild (https://github.com/stellar/go/tree/master/txnbuild), and then submitted with this client to any
+this one, txnbuild (https://github.com/stellar/go-stellar-sdk/tree/master/txnbuild), and then submitted with this client to any
 Horizon instance for processing onto the ledger. Together, these two libraries provide a complete Stellar SDK.
-
-For more information and further examples, see https://www.stellar.org/developers/go/reference/index.html.
 */
 package horizonclient
 
@@ -18,12 +16,12 @@ import (
 	"sync"
 	"time"
 
-	hProtocol "github.com/stellar/go/protocols/horizon"
-	"github.com/stellar/go/protocols/horizon/effects"
-	"github.com/stellar/go/protocols/horizon/operations"
-	"github.com/stellar/go/support/clock"
-	"github.com/stellar/go/support/render/problem"
-	"github.com/stellar/go/txnbuild"
+	hProtocol "github.com/stellar/go-stellar-sdk/protocols/horizon"
+	"github.com/stellar/go-stellar-sdk/protocols/horizon/effects"
+	"github.com/stellar/go-stellar-sdk/protocols/horizon/operations"
+	"github.com/stellar/go-stellar-sdk/support/clock"
+	"github.com/stellar/go-stellar-sdk/support/render/problem"
+	"github.com/stellar/go-stellar-sdk/txnbuild"
 )
 
 // cursor represents `cursor` param in queries
@@ -49,6 +47,9 @@ type AssetType string
 
 // join represents `join` param in queries
 type join string
+
+// reserves represents `reserves` param in queries
+type reserves []string
 
 const (
 	// OrderAsc represents an ascending order parameter
@@ -129,7 +130,8 @@ type UniversalTimeHandler func() int64
 // Client struct contains data for creating a horizon client that connects to the stellar network.
 type Client struct {
 	// URL of Horizon server to connect
-	HorizonURL string
+	HorizonURL        string
+	fixHorizonURLOnce sync.Once
 
 	// HTTP client to make requests with
 	HTTP HTTP
@@ -140,15 +142,35 @@ type Client struct {
 	// AppVersion is the version of the application using the horizonclient package
 	AppVersion     string
 	horizonTimeout time.Duration
-	isTestNet      bool
+
+	// Headers allows specifying additional HTTP headers for requests made by the client.
+	Headers map[string]string
 
 	// clock is a Clock returning the current time.
 	clock *clock.Clock
 }
 
+type AdminClient struct {
+	// fully qualified url for the admin web service
+	baseURL string
+
+	// HTTP client to make requests with
+	http HTTP
+
+	// max client wait time for response
+	horizonTimeout time.Duration
+}
+
 // SubmitTxOpts represents the submit transaction options
 type SubmitTxOpts struct {
 	SkipMemoRequiredCheck bool
+}
+
+type AdminClientInterface interface {
+	GetIngestionAccountFilter() (hProtocol.AccountFilterConfig, error)
+	GetIngestionAssetFilter() (hProtocol.AssetFilterConfig, error)
+	SetIngestionAccountFilter(hProtocol.AccountFilterConfig) error
+	SetIngestionAssetFilter(hProtocol.AssetFilterConfig) error
 }
 
 // ClientInterface contains methods implemented by the horizon client
@@ -170,6 +192,11 @@ type ClientInterface interface {
 	SubmitTransactionWithOptions(transaction *txnbuild.Transaction, opts SubmitTxOpts) (hProtocol.Transaction, error)
 	SubmitFeeBumpTransaction(transaction *txnbuild.FeeBumpTransaction) (hProtocol.Transaction, error)
 	SubmitTransaction(transaction *txnbuild.Transaction) (hProtocol.Transaction, error)
+	AsyncSubmitTransactionXDR(transactionXdr string) (hProtocol.AsyncTransactionSubmissionResponse, error)
+	AsyncSubmitFeeBumpTransactionWithOptions(transaction *txnbuild.FeeBumpTransaction, opts SubmitTxOpts) (hProtocol.AsyncTransactionSubmissionResponse, error)
+	AsyncSubmitTransactionWithOptions(transaction *txnbuild.Transaction, opts SubmitTxOpts) (hProtocol.AsyncTransactionSubmissionResponse, error)
+	AsyncSubmitFeeBumpTransaction(transaction *txnbuild.FeeBumpTransaction) (hProtocol.AsyncTransactionSubmissionResponse, error)
+	AsyncSubmitTransaction(transaction *txnbuild.Transaction) (hProtocol.AsyncTransactionSubmissionResponse, error)
 	Transactions(request TransactionRequest) (hProtocol.TransactionsPage, error)
 	TransactionDetail(txHash string) (hProtocol.Transaction, error)
 	OrderBook(request OrderBookRequest) (hProtocol.OrderBookSummary, error)
@@ -207,6 +234,10 @@ type ClientInterface interface {
 	HomeDomainForAccount(aid string) (string, error)
 	NextTradeAggregationsPage(hProtocol.TradeAggregationsPage) (hProtocol.TradeAggregationsPage, error)
 	PrevTradeAggregationsPage(hProtocol.TradeAggregationsPage) (hProtocol.TradeAggregationsPage, error)
+	LiquidityPoolDetail(request LiquidityPoolRequest) (hProtocol.LiquidityPool, error)
+	LiquidityPools(request LiquidityPoolsRequest) (hProtocol.LiquidityPoolsPage, error)
+	NextLiquidityPoolsPage(hProtocol.LiquidityPoolsPage) (hProtocol.LiquidityPoolsPage, error)
+	PrevLiquidityPoolsPage(hProtocol.LiquidityPoolsPage) (hProtocol.LiquidityPoolsPage, error)
 }
 
 // DefaultTestNetClient is a default client to connect to test network.
@@ -214,7 +245,6 @@ var DefaultTestNetClient = &Client{
 	HorizonURL:     "https://horizon-testnet.stellar.org/",
 	HTTP:           http.DefaultClient,
 	horizonTimeout: HorizonTimeout,
-	isTestNet:      true,
 }
 
 // DefaultPublicNetClient is a default client to connect to public network.
@@ -235,11 +265,13 @@ type HorizonRequest interface {
 // Either "Signer" or "Asset" fields should be set when retrieving Accounts.
 // At the moment, you can't use both filters at the same time.
 type AccountsRequest struct {
-	Signer string
-	Asset  string
-	Order  Order
-	Cursor string
-	Limit  uint
+	Signer        string
+	Asset         string
+	Sponsor       string
+	LiquidityPool string
+	Order         Order
+	Cursor        string
+	Limit         uint
 }
 
 // AccountRequest struct contains data for making requests to the show account endpoint of a horizon server.
@@ -255,13 +287,14 @@ type AccountRequest struct {
 // can be set at a time. If none are set, the default is to return all effects.
 // The query parameters (Order, Cursor and Limit) are optional. All or none can be set.
 type EffectRequest struct {
-	ForAccount     string
-	ForLedger      string
-	ForOperation   string
-	ForTransaction string
-	Order          Order
-	Cursor         string
-	Limit          uint
+	ForAccount       string
+	ForLedger        string
+	ForLiquidityPool string
+	ForOperation     string
+	ForTransaction   string
+	Order            Order
+	Cursor           string
+	Limit            uint
 }
 
 // AssetRequest struct contains data for getting asset details from a horizon server.
@@ -309,6 +342,7 @@ type OperationRequest struct {
 	ForAccount          string
 	ForClaimableBalance string
 	ForLedger           uint
+	ForLiquidityPool    string
 	ForTransaction      string
 	forOperationID      string
 	Order               Order
@@ -332,6 +366,7 @@ type TransactionRequest struct {
 	ForAccount          string
 	ForClaimableBalance string
 	ForLedger           uint
+	ForLiquidityPool    string
 	forTransactionHash  string
 	Order               Order
 	Cursor              string
@@ -354,7 +389,7 @@ type OrderBookRequest struct {
 // PathsRequest struct contains data for getting available strict receive path payments from a horizon server.
 // All the Destination related parameters are required and you need to include either
 // SourceAccount or SourceAssets.
-// See https://www.stellar.org/developers/horizon/reference/endpoints/path-finding-strict-receive.html
+// See https://developers.stellar.org/api/aggregations/paths/strict-receive/
 type PathsRequest struct {
 	DestinationAccount     string
 	DestinationAssetType   AssetType
@@ -368,7 +403,7 @@ type PathsRequest struct {
 // StrictSendPathsRequest struct contains data for getting available strict send path payments from a horizon server.
 // All the Source related parameters are required and you need to include either
 // DestinationAccount or DestinationAssets.
-// See https://www.stellar.org/developers/horizon/reference/endpoints/path-finding-strict-send.html
+// See https://developers.stellar.org/api/aggregations/paths/strict-send/
 type StrictSendPathsRequest struct {
 	DestinationAccount string
 	DestinationAssets  string
@@ -385,12 +420,14 @@ type StrictSendPathsRequest struct {
 type TradeRequest struct {
 	ForOfferID         string
 	ForAccount         string
+	ForLiquidityPool   string
 	BaseAssetType      AssetType
 	BaseAssetCode      string
 	BaseAssetIssuer    string
 	CounterAssetType   AssetType
 	CounterAssetCode   string
 	CounterAssetIssuer string
+	TradeType          string
 	Order              Order
 	Cursor             string
 	Limit              uint
@@ -421,6 +458,8 @@ type ClaimableBalanceRequest struct {
 	Asset    string
 	Sponsor  string
 	Claimant string
+	Cursor   string
+	Limit    uint
 }
 
 // ServerTimeRecord contains data for the current unix time of a horizon server instance, and the local time when it was recorded.

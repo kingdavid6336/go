@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/stellar/go/protocols/horizon/operations"
-	"github.com/stellar/go/support/http/httptest"
+	"github.com/stellar/go-stellar-sdk/protocols/horizon/operations"
+	"github.com/stellar/go-stellar-sdk/support/http/httptest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -38,6 +38,13 @@ func TestOperationRequestBuildUrl(t *testing.T) {
 	// It should return valid ledger operations endpoint and no errors
 	require.NoError(t, err)
 	assert.Equal(t, "ledgers/123/operations", endpoint)
+
+	op = OperationRequest{ForLiquidityPool: "123", endpoint: "operations"}
+	endpoint, err = op.BuildURL()
+
+	// It should return valid liquidity pool effects operations and no errors
+	require.NoError(t, err)
+	assert.Equal(t, "liquidity_pools/123/operations", endpoint)
 
 	op = OperationRequest{forOperationID: "123", endpoint: "operations"}
 	endpoint, err = op.BuildURL()

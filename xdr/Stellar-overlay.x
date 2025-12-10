@@ -22,6 +22,17 @@ struct Error
     string msg<100>;
 };
 
+struct SendMore
+{
+    uint32 numMessages;
+};
+
+struct SendMoreExtended
+{
+    uint32 numMessages;
+    uint32 numBytes;
+};
+
 struct AuthCert
 {
     Curve25519Public pubkey;
@@ -42,11 +53,18 @@ struct Hello
     uint256 nonce;
 };
 
+// During the roll-out phrase, nodes can disable flow control in bytes.
+// Therefore, we need a way to communicate with other nodes
+// that we want/don't want flow control in bytes.
+// We use the `flags` field in the Auth message with a special value
+// set to communicate this. Note that AUTH_MSG_FLAG_FLOW_CONTROL_BYTES_REQUESTED != 0
+// AND AUTH_MSG_FLAG_FLOW_CONTROL_BYTES_REQUESTED != 100 (as previously
+// that value was used for other purposes).
+const AUTH_MSG_FLAG_FLOW_CONTROL_BYTES_REQUESTED = 200;
+
 struct Auth
 {
-    // Empty message, just to confirm
-    // establishment of MAC keys.
-    int unused;
+    int flags;
 };
 
 enum IPAddrType
@@ -69,17 +87,19 @@ struct PeerAddress
     uint32 numFailures;
 };
 
+// Next ID: 25
 enum MessageType
 {
     ERROR_MSG = 0,
     AUTH = 2,
     DONT_HAVE = 3,
+    // GET_PEERS (4) is deprecated
 
-    GET_PEERS = 4, // gets a list of peers this guy knows about
     PEERS = 5,
 
     GET_TX_SET = 6, // gets a particular txset by hash
     TX_SET = 7,
+    GENERALIZED_TX_SET = 17,
 
     TRANSACTION = 8, // pass on a tx you have heard about
 
@@ -92,8 +112,19 @@ enum MessageType
     // new messages
     HELLO = 13,
 
-    SURVEY_REQUEST = 14,
-    SURVEY_RESPONSE = 15
+    // SURVEY_REQUEST (14) removed and replaced by TIME_SLICED_SURVEY_REQUEST
+    // SURVEY_RESPONSE (15) removed and replaced by TIME_SLICED_SURVEY_RESPONSE
+
+    SEND_MORE = 16,
+    SEND_MORE_EXTENDED = 20,
+
+    FLOOD_ADVERT = 18,
+    FLOOD_DEMAND = 19,
+
+    TIME_SLICED_SURVEY_REQUEST = 21,
+    TIME_SLICED_SURVEY_RESPONSE = 22,
+    TIME_SLICED_SURVEY_START_COLLECTING = 23,
+    TIME_SLICED_SURVEY_STOP_COLLECTING = 24
 };
 
 struct DontHave
@@ -104,7 +135,38 @@ struct DontHave
 
 enum SurveyMessageCommandType
 {
-    SURVEY_TOPOLOGY = 0
+    TIME_SLICED_SURVEY_TOPOLOGY = 1
+};
+
+enum SurveyMessageResponseType
+{
+    SURVEY_TOPOLOGY_RESPONSE_V2 = 2
+};
+
+struct TimeSlicedSurveyStartCollectingMessage
+{
+    NodeID surveyorID;
+    uint32 nonce;
+    uint32 ledgerNum;
+};
+
+struct SignedTimeSlicedSurveyStartCollectingMessage
+{
+    Signature signature;
+    TimeSlicedSurveyStartCollectingMessage startCollecting;
+};
+
+struct TimeSlicedSurveyStopCollectingMessage
+{
+    NodeID surveyorID;
+    uint32 nonce;
+    uint32 ledgerNum;
+};
+
+struct SignedTimeSlicedSurveyStopCollectingMessage
+{
+    Signature signature;
+    TimeSlicedSurveyStopCollectingMessage stopCollecting;
 };
 
 struct SurveyRequestMessage
@@ -116,10 +178,18 @@ struct SurveyRequestMessage
     SurveyMessageCommandType commandType;
 };
 
-struct SignedSurveyRequestMessage
+struct TimeSlicedSurveyRequestMessage
+{
+    SurveyRequestMessage request;
+    uint32 nonce;
+    uint32 inboundPeersIndex;
+    uint32 outboundPeersIndex;
+};
+
+struct SignedTimeSlicedSurveyRequestMessage
 {
     Signature requestSignature;
-    SurveyRequestMessage request;
+    TimeSlicedSurveyRequestMessage request;
 };
 
 typedef opaque EncryptedBody<64000>;
@@ -132,10 +202,16 @@ struct SurveyResponseMessage
     EncryptedBody encryptedBody;
 };
 
-struct SignedSurveyResponseMessage
+struct TimeSlicedSurveyResponseMessage
+{
+    SurveyResponseMessage response;
+    uint32 nonce;
+};
+
+struct SignedTimeSlicedSurveyResponseMessage
 {
     Signature responseSignature;
-    SurveyResponseMessage response;
+    TimeSlicedSurveyResponseMessage response;
 };
 
 struct PeerStats
@@ -159,21 +235,61 @@ struct PeerStats
     uint64 duplicateFetchMessageRecv;
 };
 
-typedef PeerStats PeerStatList<25>;
-
-struct TopologyResponseBody
+struct TimeSlicedNodeData
 {
-    PeerStatList inboundPeers;
-    PeerStatList outboundPeers;
-
+    uint32 addedAuthenticatedPeers;
+    uint32 droppedAuthenticatedPeers;
     uint32 totalInboundPeerCount;
     uint32 totalOutboundPeerCount;
+
+    // SCP stats
+    uint32 p75SCPFirstToSelfLatencyMs;
+    uint32 p75SCPSelfToOtherLatencyMs;
+
+    // How many times the node lost sync in the time slice
+    uint32 lostSyncCount;
+
+    // Config data
+    bool isValidator;
+    uint32 maxInboundPeerCount;
+    uint32 maxOutboundPeerCount;
 };
 
-union SurveyResponseBody switch (SurveyMessageCommandType type)
+struct TimeSlicedPeerData
 {
-case SURVEY_TOPOLOGY:
-    TopologyResponseBody topologyResponseBody;
+    PeerStats peerStats;
+    uint32 averageLatencyMs;
+};
+
+typedef TimeSlicedPeerData TimeSlicedPeerDataList<25>;
+
+struct TopologyResponseBodyV2
+{
+    TimeSlicedPeerDataList inboundPeers;
+    TimeSlicedPeerDataList outboundPeers;
+    TimeSlicedNodeData nodeData;
+};
+
+union SurveyResponseBody switch (SurveyMessageResponseType type)
+{
+case SURVEY_TOPOLOGY_RESPONSE_V2:
+    TopologyResponseBodyV2 topologyResponseBodyV2;
+};
+
+const TX_ADVERT_VECTOR_MAX_SIZE = 1000;
+typedef Hash TxAdvertVector<TX_ADVERT_VECTOR_MAX_SIZE>;
+
+struct FloodAdvert
+{
+    TxAdvertVector txHashes;
+};
+
+const TX_DEMAND_VECTOR_MAX_SIZE = 1000;
+typedef Hash TxDemandVector<TX_DEMAND_VECTOR_MAX_SIZE>;
+
+struct FloodDemand
+{
+    TxDemandVector txHashes;
 };
 
 union StellarMessage switch (MessageType type)
@@ -186,8 +302,6 @@ case AUTH:
     Auth auth;
 case DONT_HAVE:
     DontHave dontHave;
-case GET_PEERS:
-    void;
 case PEERS:
     PeerAddress peers<100>;
 
@@ -195,15 +309,25 @@ case GET_TX_SET:
     uint256 txSetHash;
 case TX_SET:
     TransactionSet txSet;
+case GENERALIZED_TX_SET:
+    GeneralizedTransactionSet generalizedTxSet;
 
 case TRANSACTION:
     TransactionEnvelope transaction;
 
-case SURVEY_REQUEST:
-    SignedSurveyRequestMessage signedSurveyRequestMessage;
+case TIME_SLICED_SURVEY_REQUEST:
+    SignedTimeSlicedSurveyRequestMessage signedTimeSlicedSurveyRequestMessage;
 
-case SURVEY_RESPONSE:
-    SignedSurveyResponseMessage signedSurveyResponseMessage;
+case TIME_SLICED_SURVEY_RESPONSE:
+    SignedTimeSlicedSurveyResponseMessage signedTimeSlicedSurveyResponseMessage;
+
+case TIME_SLICED_SURVEY_START_COLLECTING:
+    SignedTimeSlicedSurveyStartCollectingMessage
+        signedTimeSlicedSurveyStartCollectingMessage;
+
+case TIME_SLICED_SURVEY_STOP_COLLECTING:
+    SignedTimeSlicedSurveyStopCollectingMessage
+        signedTimeSlicedSurveyStopCollectingMessage;
 
 // SCP
 case GET_SCP_QUORUMSET:
@@ -214,6 +338,15 @@ case SCP_MESSAGE:
     SCPEnvelope envelope;
 case GET_SCP_STATE:
     uint32 getSCPLedgerSeq; // ledger seq requested ; if 0, requests the latest
+case SEND_MORE:
+    SendMore sendMoreMessage;
+case SEND_MORE_EXTENDED:
+    SendMoreExtended sendMoreExtendedMessage;
+// Pull mode
+case FLOOD_ADVERT:
+     FloodAdvert floodAdvert;
+case FLOOD_DEMAND:
+     FloodDemand floodDemand;
 };
 
 union AuthenticatedMessage switch (uint32 v)

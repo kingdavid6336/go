@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/stellar/go/historyarchive"
-	"github.com/stellar/go/ingest/ledgerbackend"
-	"github.com/stellar/go/network"
-	"github.com/stellar/go/xdr"
+	"github.com/stellar/go-stellar-sdk/historyarchive"
+	"github.com/stellar/go-stellar-sdk/ingest/ledgerbackend"
+	"github.com/stellar/go-stellar-sdk/network"
+	"github.com/stellar/go-stellar-sdk/support/storage"
+	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
 // Example_ledgerentrieshistoryarchive demonstrates how to stream all ledger
@@ -18,7 +19,11 @@ func Example_ledgerentrieshistoryarchive() {
 
 	archive, err := historyarchive.Connect(
 		archiveURL,
-		historyarchive.ConnectOptions{Context: context.TODO()},
+		historyarchive.ArchiveOptions{
+			ConnectOptions: storage.ConnectOptions{
+				Context: context.TODO(),
+			},
+		},
 	)
 	if err != nil {
 		panic(err)

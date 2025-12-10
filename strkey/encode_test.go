@@ -1,6 +1,7 @@
 package strkey
 
 import (
+	"crypto/rand"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -69,11 +70,66 @@ func TestEncode(t *testing.T) {
 			},
 			Expected: "XBU2RRGLXH3E5CQHTD3ODLDF2BWDCYUSSBLLZ5GNW7JXHDIYKXZWGTOG",
 		},
+		{
+			Name:        "SignedPayload",
+			VersionByte: VersionByteSignedPayload,
+			Payload: []byte{
+				// ed25519 (same as test case 1)
+				0x36, 0x3e, 0xaa, 0x38, 0x67, 0x84, 0x1f, 0xba,
+				0xd0, 0xf4, 0xed, 0x88, 0xc7, 0x79, 0xe4, 0xfe,
+				0x66, 0xe5, 0x6a, 0x24, 0x70, 0xdc, 0x98, 0xc0,
+				0xec, 0x9c, 0x07, 0x3d, 0x05, 0xc7, 0xb1, 0x03,
+				// payload length
+				0x00, 0x00, 0x00, 0x09,
+				// payload
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00,
+				// padding
+				0x00, 0x00, 0x00,
+			},
+			Expected: "PA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZLKERYNZGGA5SOAOPIFY6YQGAAAAAEQAAAAAAAAAAAAAAAAAABBXA",
+		},
+		{
+			Name:        "Contract",
+			VersionByte: VersionByteContract,
+			Payload: []byte{
+				0x3f, 0x0c, 0x34, 0xbf, 0x93, 0xad, 0x0d, 0x99,
+				0x71, 0xd0, 0x4c, 0xcc, 0x90, 0xf7, 0x05, 0x51,
+				0x1c, 0x83, 0x8a, 0xad, 0x97, 0x34, 0xa4, 0xa2,
+				0xfb, 0x0d, 0x7a, 0x03, 0xfc, 0x7f, 0xe8, 0x9a,
+			},
+			Expected: "CA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJUWDA",
+		},
+		{
+			Name:        "Liquidity Pool",
+			VersionByte: VersionByteLiquidityPool,
+			Payload: []byte{
+				0x3f, 0x0c, 0x34, 0xbf, 0x93, 0xad, 0x0d, 0x99,
+				0x71, 0xd0, 0x4c, 0xcc, 0x90, 0xf7, 0x05, 0x51,
+				0x1c, 0x83, 0x8a, 0xad, 0x97, 0x34, 0xa4, 0xa2,
+				0xfb, 0x0d, 0x7a, 0x03, 0xfc, 0x7f, 0xe8, 0x9a,
+			},
+			Expected: "LA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJUPJN",
+		},
+		{
+			Name:        "Claimable Balance",
+			VersionByte: VersionByteClaimableBalance,
+			Payload: []byte{
+				// first byte represents ClaimableBalanceIDType (in this case it's V0)
+				0x00,
+				// the remaining 32 bytes are the contents of the claimable balance hash
+				0x3f, 0x0c, 0x34, 0xbf, 0x93, 0xad, 0x0d, 0x99,
+				0x71, 0xd0, 0x4c, 0xcc, 0x90, 0xf7, 0x05, 0x51,
+				0x1c, 0x83, 0x8a, 0xad, 0x97, 0x34, 0xa4, 0xa2,
+				0xfb, 0x0d, 0x7a, 0x03, 0xfc, 0x7f, 0xe8, 0x9a,
+			},
+			Expected: "BAAD6DBUX6J22DMZOHIEZTEQ64CVCHEDRKWZONFEUL5Q26QD7R76RGR4TU",
+		},
 	}
 
 	for _, kase := range cases {
 		actual, err := Encode(kase.VersionByte, kase.Payload)
-		if assert.NoError(t, err, "An error occured in case %s", kase.Name) {
+		if assert.NoError(t, err, "An error occurred in case %s", kase.Name) {
 			assert.Equal(t, kase.Expected, actual, "Output mismatch in case %s", kase.Name)
 		}
 	}
@@ -81,4 +137,10 @@ func TestEncode(t *testing.T) {
 	// test bad version byte
 	_, err := Encode(VersionByte(2), cases[0].Payload)
 	assert.Error(t, err)
+
+	// test too long payload
+	longPayload := make([]byte, maxPayloadSize+1)
+	rand.Read(longPayload)
+	_, err = Encode(VersionByteAccountID, longPayload)
+	assert.EqualError(t, err, "data exceeds maximum payload size for strkey")
 }

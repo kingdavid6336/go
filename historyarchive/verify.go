@@ -11,10 +11,11 @@ import (
 	"fmt"
 	"hash"
 	"io"
-	"log"
 	"sort"
 
-	"github.com/stellar/go/xdr"
+	log "github.com/sirupsen/logrus"
+
+	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
 // Transaction sets are sorted in two different orders: one for hashing and
@@ -50,11 +51,11 @@ func SortTxsForHash(txset *xdr.TransactionSet) error {
 		hsh: make([]Hash, len(txset.Txs)),
 	}
 	for i, tx := range txset.Txs {
-		h, err := HashXdr(&tx)
+		h, err := xdr.HashXdr(&tx)
 		if err != nil {
 			return err
 		}
-		bh.hsh[i] = h
+		bh.hsh[i] = Hash(h)
 	}
 	sort.Sort(bh)
 	return nil
@@ -85,18 +86,18 @@ func HashEmptyTxSet(previousLedgerHash Hash) Hash {
 }
 
 func (arch *Archive) VerifyLedgerHeaderHistoryEntry(entry *xdr.LedgerHeaderHistoryEntry) error {
-	h, err := HashXdr(&entry.Header)
+	h, err := xdr.HashXdr(&entry.Header)
 	if err != nil {
 		return err
 	}
-	if h != Hash(entry.Hash) {
+	if h != entry.Hash {
 		return fmt.Errorf("Ledger %d expected hash %s, got %s",
 			entry.Header.LedgerSeq, Hash(entry.Hash), Hash(h))
 	}
 	arch.mutex.Lock()
 	defer arch.mutex.Unlock()
 	seq := uint32(entry.Header.LedgerSeq)
-	arch.actualLedgerHashes[seq] = h
+	arch.actualLedgerHashes[seq] = Hash(h)
 	arch.expectLedgerHashes[seq-1] = Hash(entry.Header.PreviousLedgerHash)
 	arch.expectTxSetHashes[seq] = Hash(entry.Header.ScpValue.TxSetHash)
 	arch.expectTxResultSetHashes[seq] = Hash(entry.Header.TxSetResultHash)
@@ -116,13 +117,13 @@ func (arch *Archive) VerifyTransactionHistoryEntry(entry *xdr.TransactionHistory
 }
 
 func (arch *Archive) VerifyTransactionHistoryResultEntry(entry *xdr.TransactionHistoryResultEntry) error {
-	h, err := HashXdr(&entry.TxResultSet)
+	h, err := xdr.HashXdr(&entry.TxResultSet)
 	if err != nil {
 		return err
 	}
 	arch.mutex.Lock()
 	defer arch.mutex.Unlock()
-	arch.actualTxResultSetHashes[uint32(entry.LedgerSeq)] = h
+	arch.actualTxResultSetHashes[uint32(entry.LedgerSeq)] = Hash(h)
 	return nil
 }
 
@@ -138,7 +139,7 @@ func (arch *Archive) VerifyCategoryCheckpoint(cat string, chk uint32) error {
 	}
 	defer rdr.Close()
 
-	var tmp interface{}
+	var tmp xdr.DecoderFrom
 	var step func() error
 	var reset func()
 
@@ -177,7 +178,7 @@ func (arch *Archive) VerifyCategoryCheckpoint(cat string, chk uint32) error {
 
 	for {
 		reset()
-		if err = rdr.ReadOne(&tmp); err != nil {
+		if err = rdr.ReadOne(tmp); err != nil {
 			if err == io.EOF {
 				break
 			} else {
@@ -246,7 +247,7 @@ func reportValidity(ty string, nbad int, total int) {
 	if nbad == 0 {
 		log.Printf("Verified %d %ss have expected hashes", total, ty)
 	} else {
-		log.Printf("Error: %d %ss (of %d checked) have unexpected hashes", nbad, ty, total)
+		log.Errorf("Error: %d %ss (of %d checked) have unexpected hashes", nbad, ty, total)
 	}
 }
 
@@ -260,7 +261,7 @@ func compareHashMaps(expect map[uint32]Hash, actual map[uint32]Hash, ty string,
 		}
 		if ahash != ehash {
 			n++
-			log.Printf("Error: mismatched hash on %s 0x%8.8x: expected %s, got %s",
+			log.Errorf("Error: mismatched hash on %s 0x%8.8x: expected %s, got %s",
 				ty, eledger, ehash, ahash)
 		}
 	}
@@ -268,9 +269,9 @@ func compareHashMaps(expect map[uint32]Hash, actual map[uint32]Hash, ty string,
 	return n
 }
 
-func (arch *Archive) ReportInvalid(opts *CommandOptions) error {
+func (arch *Archive) ReportInvalid(opts *CommandOptions) (bool, error) {
 	if !opts.Verify {
-		return nil
+		return false, nil
 	}
 
 	arch.mutex.Lock()
@@ -316,7 +317,7 @@ func (arch *Archive) ReportInvalid(opts *CommandOptions) error {
 	totalInvalid += arch.invalidTxResultSets
 
 	if totalInvalid != 0 {
-		return fmt.Errorf("Detected %d objects with unexpected hashes", totalInvalid)
+		return true, fmt.Errorf("Detected %d objects with unexpected hashes", totalInvalid)
 	}
-	return nil
+	return false, nil
 }

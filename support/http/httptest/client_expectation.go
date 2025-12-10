@@ -1,12 +1,13 @@
 package httptest
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
 
 	"github.com/jarcoal/httpmock"
-	"github.com/stellar/go/support/errors"
+	"github.com/stellar/go-stellar-sdk/support/errors"
 )
 
 // Return specifies the response for a ClientExpectation, which is then
@@ -56,7 +57,7 @@ func (ce *ClientExpectation) ReturnJSON(
 
 // ReturnNotFound is a simple helper that causes this expectation to resolve to
 // a 404 error.  If a customized body is needed, use something like
-// `ReturnString`` instead.
+// `ReturnString“ instead.
 func (ce *ClientExpectation) ReturnNotFound() *ClientExpectation {
 	return ce.ReturnString(http.StatusNotFound, "not found")
 }
@@ -83,6 +84,37 @@ func (ce *ClientExpectation) ReturnStringWithHeader(
 	}
 
 	return ce.Return(httpmock.ResponderFromResponse(&cResp))
+}
+
+// ReturnMultipleResults registers multiple sequential responses for a given client expectation.
+// Useful for testing retries
+func (ce *ClientExpectation) ReturnMultipleResults(responseSets []ResponseData) *ClientExpectation {
+	var allResponses []httpmock.Responder
+	for _, response := range responseSets {
+		resp := http.Response{
+			Status:     strconv.Itoa(response.Status),
+			StatusCode: response.Status,
+			Body:       httpmock.NewRespBodyFromString(response.Body),
+			Header:     response.Header,
+		}
+		allResponses = append(allResponses, httpmock.ResponderFromResponse(&resp))
+	}
+	responseIndex := 0
+	ce.Client.MockTransport.RegisterResponder(
+		ce.Method,
+		ce.URL,
+		func(req *http.Request) (*http.Response, error) {
+			if responseIndex >= len(allResponses) {
+				panic(fmt.Errorf("no responses available"))
+			}
+
+			resp := allResponses[responseIndex]
+			responseIndex++
+			return resp(req)
+		},
+	)
+
+	return ce
 }
 
 // ReturnJSONWithHeader causes this expectation to resolve to a json-based body with the provided

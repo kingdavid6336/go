@@ -12,11 +12,17 @@ func Dump(v goxdr.XdrType) []byte {
 	var buf bytes.Buffer
 	writer := goxdr.XdrOut{Out: &buf}
 	writer.Marshal("", v)
-	return buf.Bytes()
+	output := buf.Bytes()
+	buf.Reset()
+	return output
+}
+
+func Parse(val goxdr.XdrType, in []byte) {
+	val.XdrMarshal(&goxdr.XdrIn{bytes.NewReader(in)}, "")
 }
 
 // Convert serializes the given goxdr value into another destination value
-// which supports binary unmarshalling.
+// which supports binary unmarshaling.
 //
 // This function can be used to convert github.com/xdrpp/goxdr/xdr values into
 // equivalent https://github.com/stellar/go-xdr values.

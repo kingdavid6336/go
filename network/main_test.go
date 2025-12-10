@@ -3,7 +3,7 @@ package network
 import (
 	"testing"
 
-	"github.com/stellar/go/xdr"
+	"github.com/stellar/go-stellar-sdk/xdr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -39,8 +39,9 @@ func TestHashTransaction(t *testing.T) {
 		Memo:          txe.Memo(),
 		Operations:    txe.Operations(),
 		SeqNum:        xdr.SequenceNumber(txe.SeqNum()),
-		TimeBounds:    txe.TimeBounds(),
+		Cond:          xdr.NewPreconditionsWithTimeBounds(txe.TimeBounds()),
 	}
+
 	actual, err = HashTransaction(tx, TestNetworkPassphrase)
 	assert.NoError(t, err)
 	assert.Equal(t, expected, actual)

@@ -1,6 +1,7 @@
 package keypair
 
 import (
+	"crypto/ed25519"
 	"crypto/rand"
 	"errors"
 	"io"
@@ -14,16 +15,17 @@ import (
 
 func TestBuild(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Package: github.com/stellar/go/keypair")
+	RunSpecs(t, "Package: github.com/stellar/go-stellar-sdk/keypair")
 }
 
 var (
-	address   = "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H"
-	seed      = "SDHOAMBNLGCE2MV5ZKIVZAQD3VCLGP53P3OBSBI6UN5L5XZI5TKHFQL4"
-	hint      = [4]byte{0x56, 0xfc, 0x05, 0xf7}
-	message   = []byte("hello")
-	signature = []byte{
-		0x2E, 0x75, 0xcc, 0x20, 0xd5, 0x19, 0x11, 0x1c, 0xaa, 0xaa, 0xdd, 0xdf,
+	address     = "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H"
+	seed        = "SDHOAMBNLGCE2MV5ZKIVZAQD3VCLGP53P3OBSBI6UN5L5XZI5TKHFQL4"
+	hint        = [4]byte{0x56, 0xfc, 0x05, 0xf7}
+	payloadHint = [4]byte{0x33, 0x90, 0x69, 0x98}
+	message     = []byte("hello")
+	signature   = []byte{
+		0x2e, 0x75, 0xcc, 0x20, 0xd5, 0x19, 0x11, 0x1c, 0xaa, 0xaa, 0xdd, 0xdf,
 		0x46, 0x4b, 0xb6, 0x50, 0xd2, 0xea, 0xf0, 0xa5, 0xd1, 0x8d, 0x74, 0x56,
 		0x93, 0xa1, 0x61, 0x00, 0xf2, 0xa4, 0x93, 0x7b, 0xc1, 0xdf, 0xfa, 0x8b,
 		0x0b, 0x1f, 0x61, 0xa2, 0x76, 0x99, 0x6d, 0x7e, 0xe8, 0xde, 0xb2, 0xd0,
@@ -33,7 +35,6 @@ var (
 )
 
 func ItBehavesLikeAKP(subject *KP) {
-
 	// NOTE: subject will only be valid to dereference when inside am "It"
 	// example.
 
@@ -140,9 +141,14 @@ var _ = DescribeTable("keypair.ParseFull()",
 		ErrCase:  HaveOccurred(),
 	}),
 	Entry("a valid seed", ParseFullCase{
-		Input:    "SDHOAMBNLGCE2MV5ZKIVZAQD3VCLGP53P3OBSBI6UN5L5XZI5TKHFQL4",
-		FullCase: Equal(&Full{seed: "SDHOAMBNLGCE2MV5ZKIVZAQD3VCLGP53P3OBSBI6UN5L5XZI5TKHFQL4"}),
-		ErrCase:  BeNil(),
+		Input: "SDHOAMBNLGCE2MV5ZKIVZAQD3VCLGP53P3OBSBI6UN5L5XZI5TKHFQL4",
+		FullCase: Equal(&Full{
+			address:    "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H",
+			seed:       "SDHOAMBNLGCE2MV5ZKIVZAQD3VCLGP53P3OBSBI6UN5L5XZI5TKHFQL4",
+			publicKey:  ed25519.PublicKey{98, 252, 29, 11, 208, 145, 178, 182, 28, 13, 214, 86, 52, 107, 42, 104, 215, 211, 71, 198, 242, 194, 200, 238, 109, 4, 71, 2, 86, 252, 5, 247},
+			privateKey: ed25519.PrivateKey{206, 224, 48, 45, 89, 132, 77, 50, 189, 202, 145, 92, 130, 3, 221, 68, 179, 63, 187, 126, 220, 25, 5, 30, 163, 122, 190, 223, 40, 236, 212, 114, 98, 252, 29, 11, 208, 145, 178, 182, 28, 13, 214, 86, 52, 107, 42, 104, 215, 211, 71, 198, 242, 194, 200, 238, 109, 4, 71, 2, 86, 252, 5, 247},
+		}),
+		ErrCase: BeNil(),
 	}),
 	Entry("a corrupted seed", ParseFullCase{
 		Input:    "SDHOAMBNLGCE2MV5ZKIVZAQD3VCLGP53P3OBSBI6UN5L5XZI5TKHFQL3",
@@ -182,8 +188,13 @@ var _ = DescribeTable("keypair.MustParseFull()",
 		FuncCase: Panic(),
 	}),
 	Entry("a valid seed", MustParseFullCase{
-		Input:    "SDHOAMBNLGCE2MV5ZKIVZAQD3VCLGP53P3OBSBI6UN5L5XZI5TKHFQL4",
-		FullCase: Equal(&Full{seed: "SDHOAMBNLGCE2MV5ZKIVZAQD3VCLGP53P3OBSBI6UN5L5XZI5TKHFQL4"}),
+		Input: "SDHOAMBNLGCE2MV5ZKIVZAQD3VCLGP53P3OBSBI6UN5L5XZI5TKHFQL4",
+		FullCase: Equal(&Full{
+			address:    "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H",
+			seed:       "SDHOAMBNLGCE2MV5ZKIVZAQD3VCLGP53P3OBSBI6UN5L5XZI5TKHFQL4",
+			publicKey:  ed25519.PublicKey{98, 252, 29, 11, 208, 145, 178, 182, 28, 13, 214, 86, 52, 107, 42, 104, 215, 211, 71, 198, 242, 194, 200, 238, 109, 4, 71, 2, 86, 252, 5, 247},
+			privateKey: ed25519.PrivateKey{206, 224, 48, 45, 89, 132, 77, 50, 189, 202, 145, 92, 130, 3, 221, 68, 179, 63, 187, 126, 220, 25, 5, 30, 163, 122, 190, 223, 40, 236, 212, 114, 98, 252, 29, 11, 208, 145, 178, 182, 28, 13, 214, 86, 52, 107, 42, 104, 215, 211, 71, 198, 242, 194, 200, 238, 109, 4, 71, 2, 86, 252, 5, 247},
+		}),
 		FuncCase: Not(Panic()),
 	}),
 	Entry("a corrupted seed", MustParseFullCase{
@@ -213,9 +224,12 @@ var _ = DescribeTable("keypair.ParseAddress()",
 	},
 
 	Entry("a valid address", ParseAddressCase{
-		Input:       "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H",
-		AddressCase: Equal(&FromAddress{address: "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H"}),
-		ErrCase:     BeNil(),
+		Input: "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H",
+		AddressCase: Equal(&FromAddress{
+			address:   "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H",
+			publicKey: ed25519.PublicKey{98, 252, 29, 11, 208, 145, 178, 182, 28, 13, 214, 86, 52, 107, 42, 104, 215, 211, 71, 198, 242, 194, 200, 238, 109, 4, 71, 2, 86, 252, 5, 247},
+		}),
+		ErrCase: BeNil(),
 	}),
 	Entry("a corrupted address", ParseAddressCase{
 		Input:       "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7O32H",
@@ -255,9 +269,12 @@ var _ = DescribeTable("keypair.MustParseAddress()",
 	},
 
 	Entry("a valid address", MustParseAddressCase{
-		Input:       "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H",
-		AddressCase: Equal(&FromAddress{address: "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H"}),
-		FuncCase:    Not(Panic()),
+		Input: "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H",
+		AddressCase: Equal(&FromAddress{
+			address:   "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H",
+			publicKey: ed25519.PublicKey{98, 252, 29, 11, 208, 145, 178, 182, 28, 13, 214, 86, 52, 107, 42, 104, 215, 211, 71, 198, 242, 194, 200, 238, 109, 4, 71, 2, 86, 252, 5, 247},
+		}),
+		FuncCase: Not(Panic()),
 	}),
 	Entry("a corrupted address", MustParseAddressCase{
 		Input:    "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7O32H",

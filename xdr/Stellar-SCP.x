@@ -75,12 +75,12 @@ struct SCPEnvelope
     Signature signature;
 };
 
-// supports things like: A,B,C,(D,E,F),(G,H,(I,J,K,L))
-// only allows 2 levels of nesting
+// supports things like: A,B,(C,D,E),(F,G,(H,I,(J,K,(L,M))))
+// only allows 4 levels of nesting
 struct SCPQuorumSet
 {
     uint32 threshold;
-    PublicKey validators<>;
+    NodeID validators<>;
     SCPQuorumSet innerSets<>;
 };
 }

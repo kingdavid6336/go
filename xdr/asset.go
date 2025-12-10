@@ -1,12 +1,13 @@
 package xdr
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"regexp"
 	"strings"
 
-	"github.com/stellar/go/strkey"
+	"github.com/stellar/go-stellar-sdk/strkey"
 )
 
 // This file contains helpers for working with xdr.Asset structs
@@ -44,7 +45,7 @@ func MustNewCreditAsset(code string, issuer string) Asset {
 	return a
 }
 
-// NewAssetCodeFromString returns a new allow trust asset, panicking if it can't.
+// NewAssetCodeFromString returns a new credit asset, erroring if it can't.
 func NewAssetCodeFromString(code string) (AssetCode, error) {
 	a := AssetCode{}
 	length := len(code)
@@ -92,9 +93,9 @@ func NewCreditAsset(code string, issuer string) (Asset, error) {
 // BuildAsset creates a new asset from a given `assetType`, `code`, and `issuer`.
 //
 // Valid assetTypes are:
-// 		- `native`
-//		- `credit_alphanum4`
-//		- `credit_alphanum12`
+//   - `native`
+//   - `credit_alphanum4`
+//   - `credit_alphanum12`
 func BuildAsset(assetType, issuer, code string) (Asset, error) {
 	t, ok := StringToAssetType[assetType]
 
@@ -189,12 +190,12 @@ func (a *Asset) SetCredit(code string, issuer AccountId) error {
 
 	switch {
 	case length >= 1 && length <= 4:
-		newbody := AssetAlphaNum4{Issuer: issuer}
+		newbody := AlphaNum4{Issuer: issuer}
 		copy(newbody.AssetCode[:], []byte(code)[:length])
 		typ = AssetTypeAssetTypeCreditAlphanum4
 		body = newbody
 	case length >= 5 && length <= 12:
-		newbody := AssetAlphaNum12{Issuer: issuer}
+		newbody := AlphaNum12{Issuer: issuer}
 		copy(newbody.AssetCode[:], []byte(code)[:length])
 		typ = AssetTypeAssetTypeCreditAlphanum12
 		body = newbody
@@ -251,7 +252,7 @@ func (a Asset) String() string {
 		return t
 	}
 
-	return fmt.Sprintf("%s/%s/%s", t, c, i)
+	return t + "/" + c + "/" + i
 }
 
 // StringCanonical returns a display friendly form of the asset following its
@@ -265,45 +266,7 @@ func (a Asset) StringCanonical() string {
 		return t
 	}
 
-	return fmt.Sprintf("%s:%s", c, i)
-}
-
-// MarshalBinaryCompress marshals Asset to []byte but unlike
-// MarshalBinary() it removes all unnecessary bytes, exploting the fact
-// that XDR is padding data to 4 bytes in union discriminants etc.
-// It's primary use is in ingest/io.StateReader that keep LedgerKeys in
-// memory so this function decrease memory requirements.
-//
-// Warning, do not use UnmarshalBinary() on data encoded using this method!
-func (a Asset) MarshalBinaryCompress() ([]byte, error) {
-	m := []byte{byte(a.Type)}
-
-	var err error
-	var code []byte
-	var issuer []byte
-
-	switch a.Type {
-	case AssetTypeAssetTypeNative:
-		return m, nil
-	case AssetTypeAssetTypeCreditAlphanum4:
-		code = []byte(strings.TrimRight(string(a.AlphaNum4.AssetCode[:]), "\x00"))
-		issuer, err = a.AlphaNum4.Issuer.MarshalBinary()
-		if err != nil {
-			return nil, err
-		}
-	case AssetTypeAssetTypeCreditAlphanum12:
-		code = []byte(strings.TrimRight(string(a.AlphaNum12.AssetCode[:]), "\x00"))
-		issuer, err = a.AlphaNum12.Issuer.MarshalBinary()
-		if err != nil {
-			panic(err)
-		}
-	default:
-		panic(fmt.Errorf("Unknown asset type: %v", a.Type))
-	}
-
-	m = append(m, code...)
-	m = append(m, issuer...)
-	return m, nil
+	return c + ":" + i
 }
 
 // Equals returns true if `other` is equivalent to `a`
@@ -348,10 +311,10 @@ func (a Asset) Extract(typ interface{}, code interface{}, issuer interface{}) er
 			switch a.Type {
 			case AssetTypeAssetTypeCreditAlphanum4:
 				an := a.MustAlphaNum4()
-				*code = strings.TrimRight(string(an.AssetCode[:]), "\x00")
+				*code = string(trimRightZeros(an.AssetCode[:]))
 			case AssetTypeAssetTypeCreditAlphanum12:
 				an := a.MustAlphaNum12()
-				*code = strings.TrimRight(string(an.AssetCode[:]), "\x00")
+				*code = string(trimRightZeros(an.AssetCode[:]))
 			}
 		default:
 			return errors.New("can't extract code")
@@ -386,4 +349,126 @@ func (a Asset) MustExtract(typ interface{}, code interface{}, issuer interface{}
 	if err != nil {
 		panic(err)
 	}
+}
+
+// ToChangeTrustAsset converts Asset to ChangeTrustAsset.
+func (a Asset) ToChangeTrustAsset() ChangeTrustAsset {
+	var cta ChangeTrustAsset
+
+	cta.Type = a.Type
+
+	switch a.Type {
+	case AssetTypeAssetTypeNative:
+		// Empty branch
+	case AssetTypeAssetTypeCreditAlphanum4:
+		assetCode4 := *a.AlphaNum4
+		cta.AlphaNum4 = &assetCode4
+	case AssetTypeAssetTypeCreditAlphanum12:
+		assetCode12 := *a.AlphaNum12
+		cta.AlphaNum12 = &assetCode12
+	default:
+		panic(fmt.Errorf("Cannot transform type %v to Asset", a.Type))
+	}
+
+	return cta
+}
+
+// ToTrustLineAsset converts Asset to TrustLineAsset.
+func (a Asset) ToTrustLineAsset() TrustLineAsset {
+	var tla TrustLineAsset
+
+	tla.Type = a.Type
+
+	switch a.Type {
+	case AssetTypeAssetTypeNative:
+		// Empty branch
+	case AssetTypeAssetTypeCreditAlphanum4:
+		assetCode4 := *a.AlphaNum4
+		tla.AlphaNum4 = &assetCode4
+	case AssetTypeAssetTypeCreditAlphanum12:
+		assetCode12 := *a.AlphaNum12
+		tla.AlphaNum12 = &assetCode12
+	default:
+		panic(fmt.Errorf("Cannot transform type %v to Asset", a.Type))
+	}
+
+	return tla
+}
+
+func (a *Asset) GetCode() string {
+	switch a.Type {
+	case AssetTypeAssetTypeNative:
+		return ""
+	case AssetTypeAssetTypeCreditAlphanum4:
+		return string((*a.AlphaNum4).AssetCode[:])
+	case AssetTypeAssetTypeCreditAlphanum12:
+		return string((*a.AlphaNum12).AssetCode[:])
+	default:
+		return ""
+	}
+}
+
+func (a *Asset) GetIssuer() string {
+	switch a.Type {
+	case AssetTypeAssetTypeNative:
+		return ""
+	case AssetTypeAssetTypeCreditAlphanum4:
+		addr, _ := (*a.AlphaNum4).Issuer.GetAddress()
+		return addr
+	case AssetTypeAssetTypeCreditAlphanum12:
+		addr, _ := (*a.AlphaNum12).Issuer.GetAddress()
+		return addr
+	default:
+		return ""
+	}
+}
+
+func (a *Asset) GetIssuerAccountId() (AccountId, error) {
+	var addr AccountId
+	switch a.Type {
+	case AssetTypeAssetTypeNative:
+		return AccountId{}, errors.New("native Asset has no issuer")
+	case AssetTypeAssetTypeCreditAlphanum4:
+		addr = (*a.AlphaNum4).Issuer
+	case AssetTypeAssetTypeCreditAlphanum12:
+		addr = (*a.AlphaNum12).Issuer
+	}
+	return addr, nil
+}
+
+func (a *Asset) LessThan(b Asset) bool {
+	if a.Type != b.Type {
+		return int32(a.Type) < int32(b.Type)
+	}
+
+	if a.GetCode() != b.GetCode() {
+		return a.GetCode() < b.GetCode()
+	}
+
+	return a.GetIssuer() < b.GetIssuer()
+}
+
+// ContractID returns the expected Stellar Asset Contract id for the given
+// asset and network.
+func (a Asset) ContractID(passphrase string) ([32]byte, error) {
+	networkId := Hash(sha256.Sum256([]byte(passphrase)))
+	preImage := HashIdPreimage{
+		Type: EnvelopeTypeEnvelopeTypeContractId,
+		ContractId: &HashIdPreimageContractId{
+			NetworkId: networkId,
+			ContractIdPreimage: ContractIdPreimage{
+				Type:      ContractIdPreimageTypeContractIdPreimageFromAsset,
+				FromAsset: &a,
+			},
+		},
+	}
+	xdrPreImageBytes, err := preImage.MarshalBinary()
+	if err != nil {
+		return [32]byte{}, err
+	}
+	return sha256.Sum256(xdrPreImageBytes), nil
+}
+
+func (a Asset) IsNative() bool {
+	return a.Type == AssetTypeAssetTypeNative
 }

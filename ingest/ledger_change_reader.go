@@ -4,8 +4,8 @@ import (
 	"context"
 	"io"
 
-	"github.com/stellar/go/ingest/ledgerbackend"
-	"github.com/stellar/go/xdr"
+	"github.com/stellar/go-stellar-sdk/ingest/ledgerbackend"
+	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
 // ChangeReader provides convenient, streaming access to a sequence of Changes.
@@ -25,9 +25,11 @@ type ledgerChangeReaderState int
 const (
 	// feeChangesState is active when LedgerChangeReader is reading fee changes.
 	feeChangesState ledgerChangeReaderState = iota
-	// feeChangesState is active when LedgerChangeReader is reading transaction meta changes.
+	// metaChangesState is active when LedgerChangeReader is reading transaction meta changes.
 	metaChangesState
-	// feeChangesState is active when LedgerChangeReader is reading upgrade changes.
+	// postTxApplyState is active when LedgerChangeReader is reading postTxApplyFeeProcessing changes
+	postTxApplyState
+	// upgradeChanges is active when LedgerChangeReader is reading upgrade changes.
 	upgradeChangesState
 )
 
@@ -74,12 +76,66 @@ func NewLedgerChangeReaderFromLedgerCloseMeta(networkPassphrase string, ledger x
 	}, nil
 }
 
+type compactingChangeReader struct {
+	input     ChangeReader
+	changes   []Change
+	compacted bool
+	config    ChangeCompactorConfig
+}
+
+func (c *compactingChangeReader) compact() error {
+	compactor := NewChangeCompactor(c.config)
+	for {
+		change, err := c.input.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		if err = compactor.AddChange(change); err != nil {
+			return err
+		}
+	}
+	c.changes = compactor.GetChanges()
+	c.compacted = true
+	return nil
+}
+
+func (c *compactingChangeReader) Read() (Change, error) {
+	if !c.compacted {
+		if err := c.compact(); err != nil {
+			return Change{}, err
+		}
+	}
+	if len(c.changes) == 0 {
+		return Change{}, io.EOF
+	}
+	change := c.changes[0]
+	c.changes = c.changes[1:]
+	return change, nil
+}
+
+func (c *compactingChangeReader) Close() error {
+	return c.input.Close()
+}
+
+// NewCompactingChangeReader wraps a given ChangeReader and returns a ChangeReader
+// which compacts all the the Changes extracted from the input.
+func NewCompactingChangeReader(input ChangeReader, config ChangeCompactorConfig) ChangeReader {
+	return &compactingChangeReader{
+		input:  input,
+		config: config,
+	}
+}
+
 // Read returns the next change in the stream.
 // If there are no changes remaining io.EOF is returned as an error.
 func (r *LedgerChangeReader) Read() (Change, error) {
 	// Changes within a ledger should be read in the following order:
 	// - fee changes of all transactions,
 	// - transaction meta changes of all transactions,
+	// - post tx apply fee changes for all transactions,
 	// - upgrade changes.
 	// Because a single transaction can introduce many changes we read all the
 	// changes from a single transaction  and save them in r.pending.
@@ -97,12 +153,14 @@ func (r *LedgerChangeReader) Read() (Change, error) {
 	}
 
 	switch r.state {
-	case feeChangesState, metaChangesState:
+	case feeChangesState, metaChangesState, postTxApplyState:
 		tx, err := r.LedgerTransactionReader.Read()
 		if err != nil {
 			if err == io.EOF {
 				// If done streaming fee changes rewind to stream meta changes
-				if r.state == feeChangesState {
+				// If done streaming meta changes rewind to stream postTxApply changes
+				// If done streaming postTxApply changes then we progress to the next state (upgrade changes)
+				if r.state != postTxApplyState {
 					r.LedgerTransactionReader.Rewind()
 				}
 				r.state++
@@ -120,14 +178,23 @@ func (r *LedgerChangeReader) Read() (Change, error) {
 				return Change{}, err
 			}
 			r.pending = append(r.pending, metaChanges...)
+		case postTxApplyState:
+			r.pending = append(r.pending, tx.GetPostApplyFeeChanges()...)
 		}
 		return r.Read()
+
 	case upgradeChangesState:
 		// Get upgrade changes
-		if r.upgradeIndex < len(r.LedgerTransactionReader.ledgerCloseMeta.V0.UpgradesProcessing) {
+		if r.upgradeIndex < len(r.LedgerTransactionReader.lcm.UpgradesProcessing()) {
 			changes := GetChangesFromLedgerEntryChanges(
-				r.LedgerTransactionReader.ledgerCloseMeta.V0.UpgradesProcessing[r.upgradeIndex].Changes,
+				r.LedgerTransactionReader.lcm.UpgradesProcessing()[r.upgradeIndex].Changes,
 			)
+			ledgerUpgrades := r.LedgerTransactionReader.lcm.UpgradesProcessing()
+			for i := range changes {
+				changes[i].Reason = LedgerEntryChangeReasonUpgrade
+				changes[i].Ledger = &r.lcm
+				changes[i].LedgerUpgrade = &ledgerUpgrades[r.upgradeIndex].Upgrade
+			}
 			r.pending = append(r.pending, changes...)
 			r.upgradeIndex++
 			return r.Read()

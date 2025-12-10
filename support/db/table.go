@@ -3,7 +3,6 @@ package db
 import sq "github.com/Masterminds/squirrel"
 
 // Delete returns a new query builder configured to delete rows from the table.
-//
 func (tbl *Table) Delete(
 	pred interface{},
 	args ...interface{},
@@ -25,7 +24,7 @@ func (tbl *Table) Get(
 	args ...interface{},
 ) *GetBuilder {
 
-	cols := columnsForStruct(dest)
+	cols := ColumnsForStruct(dest)
 	sql := sq.Select(cols...).From(tbl.Name).Where(pred, args...).Limit(1)
 
 	return &GetBuilder{
@@ -68,7 +67,7 @@ func (tbl *Table) Select(
 	args ...interface{},
 ) *SelectBuilder {
 
-	cols := columnsForStruct(dest)
+	cols := ColumnsForStruct(dest)
 	sql := sq.Select(cols...).From(tbl.Name).Where(pred, args...)
 
 	return &SelectBuilder{

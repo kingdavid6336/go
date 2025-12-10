@@ -7,12 +7,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stellar/go/keypair"
-	"github.com/stellar/go/network"
-	"github.com/stellar/go/strkey"
-	"github.com/stellar/go/xdr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/stellar/go-stellar-sdk/keypair"
+	"github.com/stellar/go-stellar-sdk/network"
+	"github.com/stellar/go-stellar-sdk/price"
+	"github.com/stellar/go-stellar-sdk/strkey"
+	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
 func TestMissingTimebounds(t *testing.T) {
@@ -25,25 +27,59 @@ func TestMissingTimebounds(t *testing.T) {
 			BaseFee:       MinBaseFee,
 		},
 	)
-	assert.EqualError(t, err, "invalid time bounds: timebounds must be constructed using NewTimebounds(), NewTimeout(), or NewInfiniteTimeout()")
+	assert.EqualError(t, err, "invalid preconditions: timebounds must be constructed using NewTimebounds(), NewTimeout(), or NewInfiniteTimeout()")
 }
 
 func TestTimebounds(t *testing.T) {
 	kp0 := newKeypair0()
-
 	tb := NewTimeout(300)
-	tx, err := NewTransaction(
-		TransactionParams{
-			SourceAccount: &SimpleAccount{AccountID: kp0.Address(), Sequence: 1},
-			Operations:    []Operation{&BumpSequence{BumpTo: 0}},
-			BaseFee:       MinBaseFee,
-			Timebounds:    tb,
-		},
-	)
+
+	tp := TransactionParams{
+		SourceAccount: &SimpleAccount{AccountID: kp0.Address(), Sequence: 1},
+		Operations:    []Operation{&BumpSequence{BumpTo: 0}},
+		BaseFee:       MinBaseFee,
+	}
+
+	tp.Preconditions.TimeBounds = tb
+	tx, err := NewTransaction(tp)
 	assert.NoError(t, err)
-	assert.Equal(t, tb, tx.timebounds)
-	assert.Equal(t, xdr.TimePoint(tb.MinTime), tx.envelope.V1.Tx.TimeBounds.MinTime)
-	assert.Equal(t, xdr.TimePoint(tb.MaxTime), tx.envelope.V1.Tx.TimeBounds.MaxTime)
+	assert.Equal(t, tb, tx.preconditions.TimeBounds)
+	assert.Equal(t, xdr.TimePoint(tb.MinTime), tx.envelope.TimeBounds().MinTime)
+	assert.Equal(t, xdr.TimePoint(tb.MaxTime), tx.envelope.TimeBounds().MaxTime)
+}
+
+func TestV2Preconditions(t *testing.T) {
+	kp0 := newKeypair0()
+
+	cond := Preconditions{
+		TimeBounds:                 NewTimeout(300),
+		LedgerBounds:               &LedgerBounds{0, 1},
+		MinSequenceNumber:          nil,
+		MinSequenceNumberAge:       10,
+		MinSequenceNumberLedgerGap: 2,
+	}
+	assert.True(t, cond.hasV2Conditions())
+
+	tp := TransactionParams{
+		SourceAccount: &SimpleAccount{AccountID: kp0.Address(), Sequence: 1},
+		Operations:    []Operation{&BumpSequence{BumpTo: 0}},
+		BaseFee:       MinBaseFee,
+		Preconditions: cond,
+	}
+
+	tx, err := NewTransaction(tp)
+	assert.NoError(t, err)
+	assert.Equal(t, cond, tx.preconditions)
+
+	b64, err := tx.Base64()
+	assert.NoError(t, err)
+
+	unpackedTx, err := TransactionFromXDR(b64)
+	assert.NoError(t, err)
+	if !assert.NotNil(t, unpackedTx.simple) {
+		t.FailNow()
+	}
+	assert.Equal(t, cond, unpackedTx.simple.preconditions)
 }
 
 func TestMissingSourceAccount(t *testing.T) {
@@ -62,7 +98,7 @@ func TestIncrementSequenceNum(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&inflation},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	assert.NoError(t, err)
@@ -74,7 +110,7 @@ func TestIncrementSequenceNum(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&inflation},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	assert.NoError(t, err)
@@ -86,7 +122,7 @@ func TestIncrementSequenceNum(t *testing.T) {
 			IncrementSequenceNum: false,
 			Operations:           []Operation{&inflation},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	assert.NoError(t, err)
@@ -98,7 +134,7 @@ func TestIncrementSequenceNum(t *testing.T) {
 			IncrementSequenceNum: false,
 			Operations:           []Operation{&inflation},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	assert.NoError(t, err)
@@ -114,7 +150,7 @@ func TestFeeNoOperations(t *testing.T) {
 			SourceAccount: &sourceAccount,
 			Operations:    []Operation{},
 			BaseFee:       MinBaseFee,
-			Timebounds:    NewInfiniteTimeout(),
+			Preconditions: Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	assert.EqualError(t, err, "transaction has no operations")
@@ -132,7 +168,7 @@ func TestInflation(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&inflation},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp0,
@@ -158,7 +194,7 @@ func TestCreateAccount(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&createAccount},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp0,
@@ -185,7 +221,7 @@ func TestPayment(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&payment},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp0,
@@ -221,8 +257,7 @@ func TestPaymentMuxedAccounts(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&payment},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
-			EnableMuxedAccounts:  true,
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp0,
@@ -231,39 +266,6 @@ func TestPaymentMuxedAccounts(t *testing.T) {
 
 	expected := "AAAAAgAAAQAAAAAAyv66vuDcbeFyXKxmUWK1L6znNbKKIkPkHRJNbLktcKPqLnLFAAAAZAAiII0AAAAbAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAEAAAEAAAAAAMr+ur7g3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAEAAAEAgAAAAAAAAAA/DDS/k60NmXHQTMyQ9wVRHIOKrZc0pKL7DXoD/H/omgAAAAAAAAAABfXhAAAAAAAAAAAB6i5yxQAAAED4Wkvwf/BJV+fqa6Kvi+T/7ZL82pOinN68GlvEi9qK4klH+qITyvN3jRj5Nfz0+VrE2xBJPVc8sS/qN9LlznoC"
 	assert.Equal(t, expected, received, "Base 64 XDR should match")
-}
-
-func TestPaymentFailsMuxedAccountsIfNotEnabled(t *testing.T) {
-	kp0 := newKeypair0()
-	accountID := xdr.MustAddress(kp0.Address())
-	mx := xdr.MuxedAccount{
-		Type: xdr.CryptoKeyTypeKeyTypeMuxedEd25519,
-		Med25519: &xdr.MuxedAccountMed25519{
-			Id:      0xcafebabe,
-			Ed25519: *accountID.Ed25519,
-		},
-	}
-	sourceAccount := NewSimpleAccount(mx.Address(), int64(9605939170639898))
-
-	payment := Payment{
-		Destination: "MA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVAAAAAAAAAAAAAJLK",
-		Amount:      "10",
-		Asset:       NativeAsset{},
-	}
-
-	_, err := newSignedTransaction(
-		TransactionParams{
-			SourceAccount:        &sourceAccount,
-			IncrementSequenceNum: true,
-			Operations:           []Operation{&payment},
-			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
-			EnableMuxedAccounts:  false,
-		},
-		network.TestNetworkPassphrase,
-		kp0,
-	)
-	assert.Error(t, err)
 }
 
 func TestPaymentFailsIfNoAssetSpecified(t *testing.T) {
@@ -281,7 +283,7 @@ func TestPaymentFailsIfNoAssetSpecified(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&payment},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	expectedErrMsg := "validation failed for *txnbuild.Payment operation: Field: Asset, Error: asset is undefined"
@@ -302,7 +304,7 @@ func TestBumpSequence(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&bumpSequence},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp1,
@@ -327,7 +329,7 @@ func TestAccountMerge(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&accountMerge},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp0,
@@ -353,7 +355,7 @@ func TestManageData(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&manageData},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp0,
@@ -378,7 +380,7 @@ func TestManageDataRemoveDataEntry(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&manageData},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp0,
@@ -404,7 +406,7 @@ func TestSetOptionsInflationDestination(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&setOptions},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp0,
@@ -429,7 +431,7 @@ func TestSetOptionsSetFlags(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&setOptions},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp0,
@@ -454,7 +456,7 @@ func TestSetOptionsClearFlags(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&setOptions},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp0,
@@ -479,7 +481,7 @@ func TestSetOptionsMasterWeight(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&setOptions},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp0,
@@ -506,7 +508,7 @@ func TestSetOptionsThresholds(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&setOptions},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp0,
@@ -531,7 +533,7 @@ func TestSetOptionsHomeDomain(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&setOptions},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp0,
@@ -556,7 +558,7 @@ func TestSetOptionsHomeDomainTooLong(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&setOptions},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 
@@ -578,7 +580,7 @@ func TestSetOptionsSigner(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&setOptions},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp0,
@@ -604,7 +606,7 @@ func TestMultipleOperations(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&inflation, &bumpSequence},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp1,
@@ -621,7 +623,7 @@ func TestChangeTrust(t *testing.T) {
 	sourceAccount := NewSimpleAccount(kp0.Address(), int64(40385577484348))
 
 	changeTrust := ChangeTrust{
-		Line:  CreditAsset{"ABCD", kp1.Address()},
+		Line:  CreditAsset{"ABCD", kp1.Address()}.MustToChangeTrustAsset(),
 		Limit: "10",
 	}
 
@@ -631,7 +633,7 @@ func TestChangeTrust(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&changeTrust},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp0,
@@ -647,7 +649,7 @@ func TestChangeTrustNativeAssetNotAllowed(t *testing.T) {
 	sourceAccount := NewSimpleAccount(kp0.Address(), int64(40385577484348))
 
 	changeTrust := ChangeTrust{
-		Line:  NativeAsset{},
+		Line:  NativeAsset{}.MustToChangeTrustAsset(),
 		Limit: "10",
 	}
 
@@ -657,7 +659,7 @@ func TestChangeTrustNativeAssetNotAllowed(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&changeTrust},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 
@@ -671,7 +673,7 @@ func TestChangeTrustDeleteTrustline(t *testing.T) {
 	sourceAccount := NewSimpleAccount(kp0.Address(), int64(40385577484354))
 
 	issuedAsset := CreditAsset{"ABCD", kp1.Address()}
-	removeTrust := RemoveTrustlineOp(issuedAsset)
+	removeTrust := RemoveTrustlineOp(issuedAsset.MustToChangeTrustAsset())
 
 	received, err := newSignedTransaction(
 		TransactionParams{
@@ -679,7 +681,7 @@ func TestChangeTrustDeleteTrustline(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&removeTrust},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp0,
@@ -708,7 +710,7 @@ func TestAllowTrust(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&allowTrust},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp0,
@@ -737,7 +739,7 @@ func TestAllowTrustNoIssuer(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&allowTrust},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp0,
@@ -756,8 +758,7 @@ func TestManageSellOfferNewOffer(t *testing.T) {
 	selling := NativeAsset{}
 	buying := CreditAsset{"ABCD", kp0.Address()}
 	sellAmount := "100"
-	price := "0.01"
-	createOffer, err := CreateOfferOp(selling, buying, sellAmount, price)
+	createOffer, err := CreateOfferOp(selling, buying, sellAmount, price.MustParse("0.01"))
 	check(err)
 
 	received, err := newSignedTransaction(
@@ -766,7 +767,7 @@ func TestManageSellOfferNewOffer(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&createOffer},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp1,
@@ -791,7 +792,7 @@ func TestManageSellOfferDeleteOffer(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&deleteOffer},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp1,
@@ -810,9 +811,8 @@ func TestManageSellOfferUpdateOffer(t *testing.T) {
 	selling := NativeAsset{}
 	buying := CreditAsset{"ABCD", kp0.Address()}
 	sellAmount := "50"
-	price := "0.02"
 	offerID := int64(2497628)
-	updateOffer, err := UpdateOfferOp(selling, buying, sellAmount, price, offerID)
+	updateOffer, err := UpdateOfferOp(selling, buying, sellAmount, price.MustParse("0.02"), offerID)
 	check(err)
 
 	received, err := newSignedTransaction(
@@ -821,7 +821,7 @@ func TestManageSellOfferUpdateOffer(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&updateOffer},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp1,
@@ -841,7 +841,7 @@ func TestCreatePassiveSellOffer(t *testing.T) {
 		Selling: NativeAsset{},
 		Buying:  CreditAsset{"ABCD", kp0.Address()},
 		Amount:  "10",
-		Price:   "1.0",
+		Price:   xdr.Price{1, 1},
 	}
 
 	received, err := newSignedTransaction(
@@ -850,7 +850,7 @@ func TestCreatePassiveSellOffer(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&createPassiveOffer},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp1,
@@ -882,7 +882,7 @@ func TestPathPayment(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&pathPayment},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp2,
@@ -904,7 +904,7 @@ func TestMemoText(t *testing.T) {
 			Operations:           []Operation{&BumpSequence{BumpTo: 1}},
 			Memo:                 MemoText("Twas brillig"),
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp2,
@@ -926,7 +926,7 @@ func TestMemoID(t *testing.T) {
 			Operations:           []Operation{&BumpSequence{BumpTo: 1}},
 			Memo:                 MemoID(314159),
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp2,
@@ -948,7 +948,7 @@ func TestMemoHash(t *testing.T) {
 			Operations:           []Operation{&BumpSequence{BumpTo: 1}},
 			Memo:                 MemoHash([32]byte{0x01}),
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp2,
@@ -970,7 +970,7 @@ func TestMemoReturn(t *testing.T) {
 			Operations:           []Operation{&BumpSequence{BumpTo: 1}},
 			Memo:                 MemoReturn([32]byte{0x01}),
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp2,
@@ -990,7 +990,7 @@ func TestManageBuyOfferNewOffer(t *testing.T) {
 		Selling: NativeAsset{},
 		Buying:  CreditAsset{"ABCD", kp0.Address()},
 		Amount:  "100",
-		Price:   "0.01",
+		Price:   price.MustParse("0.01"),
 		OfferID: 0,
 	}
 
@@ -1000,7 +1000,7 @@ func TestManageBuyOfferNewOffer(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&buyOffer},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp1,
@@ -1019,7 +1019,7 @@ func TestManageBuyOfferDeleteOffer(t *testing.T) {
 		Selling: NativeAsset{},
 		Buying:  CreditAsset{"ABCD", kp1.Address()},
 		Amount:  "0",
-		Price:   "0.01",
+		Price:   price.MustParse("0.01"),
 		OfferID: int64(2921622),
 	}
 
@@ -1029,7 +1029,7 @@ func TestManageBuyOfferDeleteOffer(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&buyOffer},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp1,
@@ -1048,7 +1048,7 @@ func TestManageBuyOfferUpdateOffer(t *testing.T) {
 		Selling: NativeAsset{},
 		Buying:  CreditAsset{"ABCD", kp1.Address()},
 		Amount:  "50",
-		Price:   "0.02",
+		Price:   price.MustParse("0.02"),
 		OfferID: int64(2921622),
 	}
 
@@ -1058,7 +1058,7 @@ func TestManageBuyOfferUpdateOffer(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&buyOffer},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp1,
@@ -1074,7 +1074,7 @@ func TestBuildChallengeTx(t *testing.T) {
 
 	{
 		// 1 minute timebound
-		tx, err := BuildChallengeTx(kp0.Seed(), kp0.Address(), "testwebauth.stellar.org", "testanchor.stellar.org", network.TestNetworkPassphrase, time.Minute)
+		tx, err := BuildChallengeTx(kp0.Seed(), kp0.Address(), "testwebauth.stellar.org", "testanchor.stellar.org", network.TestNetworkPassphrase, time.Minute, nil)
 		assert.NoError(t, err)
 		txeBase64, err := tx.Base64()
 		assert.NoError(t, err)
@@ -1098,7 +1098,7 @@ func TestBuildChallengeTx(t *testing.T) {
 
 	{
 		// 5 minutes timebound
-		tx, err := BuildChallengeTx(kp0.Seed(), kp0.Address(), "testwebauth.stellar.org", "testanchor.stellar.org", network.TestNetworkPassphrase, time.Duration(5*time.Minute))
+		tx, err := BuildChallengeTx(kp0.Seed(), kp0.Address(), "testwebauth.stellar.org", "testanchor.stellar.org", network.TestNetworkPassphrase, time.Duration(5*time.Minute), nil)
 		assert.NoError(t, err)
 		txeBase64, err := tx.Base64()
 		assert.NoError(t, err)
@@ -1121,8 +1121,37 @@ func TestBuildChallengeTx(t *testing.T) {
 		assert.Equal(t, "testwebauth.stellar.org", string(*webAuthOp.Body.ManageDataOp.DataValue), "DataValue should be 'testwebauth.stellar.org'")
 	}
 
+	// transaction with invalid clientAccountID
+	{
+		_, err := BuildChallengeTx(kp0.Seed(), "test", "testwebauth.stellar.org", "testanchor.stellar.org", network.TestNetworkPassphrase, time.Minute, nil)
+		require.EqualError(t, err, "test is not a valid account id or muxed account: invalid address length")
+	}
+
+	// transaction with memo
+	{
+		var memo MemoID = MemoID(1)
+		tx, err := BuildChallengeTx(kp0.Seed(), kp0.Address(), "testwebauth.stellar.org", "testanchor.stellar.org", network.TestNetworkPassphrase, time.Minute, &memo)
+		assert.NoError(t, err)
+		assert.Equal(t, tx.Memo(), &memo)
+	}
+
+	// transaction with muxed account
+	{
+		muxedAccount := "MA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVAAAAAAAAAAAAAJLK"
+		tx, err := BuildChallengeTx(kp0.Seed(), muxedAccount, "testwebauth.stellar.org", "testanchor.stellar.org", network.TestNetworkPassphrase, time.Minute, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, tx.operations[0].GetSourceAccount(), muxedAccount)
+	}
+
+	// transaction with memo and muxed account
+	{
+		var memo MemoID = MemoID(1)
+		_, err := BuildChallengeTx(kp0.Seed(), "MA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVAAAAAAAAAAAAAJLK", "testwebauth.stellar.org", "testanchor.stellar.org", network.TestNetworkPassphrase, time.Minute, &memo)
+		assert.EqualError(t, err, "memos are not valid for challenge transactions with a muxed client account")
+	}
+
 	//transaction with infinite timebound
-	_, err := BuildChallengeTx(kp0.Seed(), kp0.Address(), "webauthdomain", "sdf", network.TestNetworkPassphrase, 0)
+	_, err := BuildChallengeTx(kp0.Seed(), kp0.Address(), "webauthdomain", "sdf", network.TestNetworkPassphrase, 0, nil)
 	if assert.Error(t, err) {
 		assert.Contains(t, err.Error(), "provided timebound must be at least 1s (300s is recommended)")
 	}
@@ -1143,7 +1172,7 @@ func TestHashHex(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&createAccount},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	assert.NoError(t, err)
@@ -1187,7 +1216,7 @@ func TestTransactionFee(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&createAccount},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	assert.NoError(t, err)
@@ -1201,7 +1230,7 @@ func TestTransactionFee(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&createAccount},
 			BaseFee:              500,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	assert.NoError(t, err)
@@ -1235,7 +1264,7 @@ func TestPreAuthTransaction(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&createAccount},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	assert.NoError(t, err)
@@ -1273,7 +1302,7 @@ func TestPreAuthTransaction(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&setOptions},
 			BaseFee:              500,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	assert.NoError(t, err)
@@ -1314,7 +1343,7 @@ func TestHashXTransaction(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&setOptions},
 			BaseFee:              500,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	assert.NoError(t, err)
@@ -1344,7 +1373,7 @@ func TestHashXTransaction(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&payment},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	assert.NoError(t, err)
@@ -1424,7 +1453,7 @@ func TestFromXDR(t *testing.T) {
 	txB64WithMuxedAccounts := "AAAAAgAAAQAAAAAAyv66vuDcbeFyXKxmUWK1L6znNbKKIkPkHRJNbLktcKPqLnLFAAAAZAAiII0AAAAbAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAEAAAEAAAAAAMr+ur7g3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAAEAAAEAgAAAAAAAAAA/DDS/k60NmXHQTMyQ9wVRHIOKrZc0pKL7DXoD/H/omgAAAAAAAAAABfXhAAAAAAAAAAAB6i5yxQAAAED4Wkvwf/BJV+fqa6Kvi+T/7ZL82pOinN68GlvEi9qK4klH+qITyvN3jRj5Nfz0+VrE2xBJPVc8sS/qN9LlznoC"
 
 	// It provides M-addreses when enabling muxed accounts
-	tx3, err := TransactionFromXDR(txB64WithMuxedAccounts, TransactionFromXDROptionEnableMuxedAccounts)
+	tx3, err := TransactionFromXDR(txB64WithMuxedAccounts)
 	assert.NoError(t, err)
 	newTx3, ok := tx3.Transaction()
 	assert.True(t, ok)
@@ -1433,17 +1462,6 @@ func TestFromXDR(t *testing.T) {
 	assert.True(t, ok3)
 	assert.Equal(t, "MDQNY3PBOJOKYZSRMK2S7LHHGWZIUISD4QORETLMXEWXBI7KFZZMKAAAAAAMV7V2XYGQO", op3.SourceAccount)
 	assert.Equal(t, "MA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVAAAAAAAAAAAAAJLK", op3.Destination)
-
-	// It does provide G-addreses when not enabling muxed accounts
-	tx3, err = TransactionFromXDR(txB64WithMuxedAccounts)
-	assert.NoError(t, err)
-	newTx3, ok = tx3.Transaction()
-	assert.True(t, ok)
-	assert.Equal(t, "GDQNY3PBOJOKYZSRMK2S7LHHGWZIUISD4QORETLMXEWXBI7KFZZMKTL3", newTx3.sourceAccount.AccountID)
-	op3, ok3 = newTx3.Operations()[0].(*Payment)
-	assert.True(t, ok3)
-	assert.Equal(t, "GDQNY3PBOJOKYZSRMK2S7LHHGWZIUISD4QORETLMXEWXBI7KFZZMKTL3", op3.SourceAccount)
-	assert.Equal(t, "GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ", op3.Destination)
 
 }
 
@@ -1461,7 +1479,7 @@ func TestBuild(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&createAccount},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	assert.NoError(t, err)
@@ -1521,7 +1539,7 @@ func TestFromXDRBuildSignEncode(t *testing.T) {
 			Operations:           newTx.Operations(),
 			BaseFee:              newTx.BaseFee(),
 			Memo:                 MemoText("newtx"),
-			Timebounds:           newTx.Timebounds(),
+			Preconditions:        Preconditions{TimeBounds: newTx.Timebounds()},
 		},
 		network.TestNetworkPassphrase,
 		kp0,
@@ -1547,7 +1565,7 @@ func TestSignWithSecretKey(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&createAccount},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp0, kp1,
@@ -1560,7 +1578,7 @@ func TestSignWithSecretKey(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&createAccount},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	assert.NoError(t, err)
@@ -1594,7 +1612,7 @@ func TestAddSignatureDecorated(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&createAccount},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp0, kp1,
@@ -1607,7 +1625,7 @@ func TestAddSignatureDecorated(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&createAccount},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	assert.NoError(t, err)
@@ -1684,6 +1702,51 @@ func TestAddSignatureDecorated(t *testing.T) {
 	}
 }
 
+func TestFeeBumpTransaction_AddSignatureDecorated(t *testing.T) {
+	kp0 := newKeypair0()
+	kp1 := newKeypair1()
+
+	tx, err := NewTransaction(TransactionParams{
+		SourceAccount: &SimpleAccount{kp0.Address(), int64(9605939170639897)},
+		Operations: []Operation{&CreateAccount{
+			Destination:   "GCCOBXW2XQNUSL467IEILE6MMCNRR66SSVL4YQADUNYYNUVREF3FIV2Z",
+			Amount:        "10",
+			SourceAccount: kp1.Address(),
+		}},
+		BaseFee:       MinBaseFee,
+		Preconditions: Preconditions{TimeBounds: NewInfiniteTimeout()},
+	})
+	require.NoError(t, err)
+	tx, err = tx.Sign(network.TestNetworkPassphrase, kp0, kp1)
+	require.NoError(t, err)
+
+	fbtx, err := NewFeeBumpTransaction(FeeBumpTransactionParams{
+		Inner:      tx,
+		FeeAccount: kp0.Address(),
+		BaseFee:    MinBaseFee,
+	})
+	require.NoError(t, err)
+	require.Len(t, fbtx.Signatures(), 0)
+
+	fbtxHash, err := fbtx.Hash(network.TestNetworkPassphrase)
+	require.NoError(t, err)
+
+	sig, err := kp0.SignDecorated(fbtxHash[:])
+	require.NoError(t, err)
+	fbtxWithSig, err := fbtx.AddSignatureDecorated(sig)
+	require.NoError(t, err)
+	require.Len(t, fbtx.Signatures(), 0)
+	require.Len(t, fbtxWithSig.Signatures(), 1)
+
+	sig, err = kp1.SignDecorated(fbtxHash[:])
+	require.NoError(t, err)
+	fbtxWithTwoSigs, err := fbtxWithSig.AddSignatureDecorated(sig)
+	require.NoError(t, err)
+	require.Len(t, fbtx.Signatures(), 0)
+	require.Len(t, fbtxWithSig.Signatures(), 1)
+	require.Len(t, fbtxWithTwoSigs.Signatures(), 2)
+}
+
 func TestAddSignatureBase64(t *testing.T) {
 	kp0 := newKeypair0()
 	kp1 := newKeypair1()
@@ -1701,7 +1764,7 @@ func TestAddSignatureBase64(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&createAccount},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 		network.TestNetworkPassphrase,
 		kp0, kp1,
@@ -1714,7 +1777,7 @@ func TestAddSignatureBase64(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&createAccount},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	assert.NoError(t, err)
@@ -1731,10 +1794,88 @@ func TestAddSignatureBase64(t *testing.T) {
 		"GAS4V4O2B7DW5T7IQRPEEVCRXMDZESKISR7DVIGKZQYYV3OSQ5SH5LVP",
 		"Iy77JteoW/FbeiuViZpgTyvrHP4BnBOeyVOjrdb5O/MpEMwcSlYXAkCBqPt4tBDil4jIcDDLhm7TsN6aUBkIBg==",
 	)
+	assert.NoError(t, err)
 
 	actual, err := tx1.Base64()
 	assert.NoError(t, err)
 	assert.Equal(t, expected, actual, "base64 xdr should match")
+}
+
+func TestTransaction_ClearSignatures(t *testing.T) {
+	kp0 := newKeypair0()
+	kp1 := newKeypair1()
+
+	tx, err := NewTransaction(
+		TransactionParams{
+			SourceAccount: &SimpleAccount{AccountID: kp0.Address(), Sequence: int64(9605939170639898)},
+			Operations: []Operation{&CreateAccount{
+				Destination:   "GCCOBXW2XQNUSL467IEILE6MMCNRR66SSVL4YQADUNYYNUVREF3FIV2Z",
+				Amount:        "10",
+				SourceAccount: kp1.Address(),
+			}},
+			BaseFee:       MinBaseFee,
+			Preconditions: Preconditions{TimeBounds: NewInfiniteTimeout()},
+		},
+	)
+	require.NoError(t, err)
+	require.Len(t, tx.Signatures(), 0)
+
+	txWithSig, err := tx.Sign(network.TestNetworkPassphrase, kp0)
+	require.NoError(t, err)
+	require.Len(t, txWithSig.Signatures(), 1)
+
+	txSigCleared, err := txWithSig.ClearSignatures()
+	require.NoError(t, err)
+	require.Len(t, txSigCleared.Signatures(), 0)
+
+	expected, err := tx.Base64()
+	assert.NoError(t, err)
+	actual, err := txSigCleared.Base64()
+	assert.NoError(t, err)
+	assert.Equal(t, expected, actual)
+}
+
+func TestFeeBumpTransaction_ClearSignatures(t *testing.T) {
+	kp0 := newKeypair0()
+	kp1 := newKeypair1()
+
+	tx, err := NewTransaction(TransactionParams{
+		SourceAccount: &SimpleAccount{AccountID: kp0.Address(), Sequence: int64(9605939170639898)},
+		Operations: []Operation{&CreateAccount{
+			Destination:   "GCCOBXW2XQNUSL467IEILE6MMCNRR66SSVL4YQADUNYYNUVREF3FIV2Z",
+			Amount:        "10",
+			SourceAccount: kp1.Address(),
+		}},
+		BaseFee:       MinBaseFee,
+		Preconditions: Preconditions{TimeBounds: NewInfiniteTimeout()},
+	})
+	require.NoError(t, err)
+	require.Len(t, tx.Signatures(), 0)
+	txWithSig, err := tx.Sign(network.TestNetworkPassphrase, kp0)
+	require.NoError(t, err)
+	require.Len(t, txWithSig.Signatures(), 1)
+
+	fbtx, err := NewFeeBumpTransaction(FeeBumpTransactionParams{
+		Inner:      txWithSig,
+		FeeAccount: kp0.Address(),
+		BaseFee:    MinBaseFee,
+	})
+	require.NoError(t, err)
+	require.Len(t, fbtx.Signatures(), 0)
+
+	fbtxWithSig, err := fbtx.Sign(network.TestNetworkPassphrase, kp0)
+	require.NoError(t, err)
+	require.Len(t, fbtxWithSig.Signatures(), 1)
+
+	fbtxSigCleared, err := fbtxWithSig.ClearSignatures()
+	require.NoError(t, err)
+	require.Len(t, fbtxSigCleared.Signatures(), 0)
+
+	expected, err := fbtx.Base64()
+	assert.NoError(t, err)
+	actual, err := fbtxSigCleared.Base64()
+	assert.NoError(t, err)
+	assert.Equal(t, expected, actual)
 }
 
 func TestReadChallengeTx_validSignedByServerAndClient(t *testing.T) {
@@ -1758,7 +1899,7 @@ func TestReadChallengeTx_validSignedByServerAndClient(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 	)
 	assert.NoError(t, err)
@@ -1767,7 +1908,7 @@ func TestReadChallengeTx_validSignedByServerAndClient(t *testing.T) {
 	assert.NoError(t, err)
 	tx64, err := tx.Base64()
 	require.NoError(t, err)
-	readTx, readClientAccountID, _, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
+	readTx, readClientAccountID, _, _, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
 	assert.Equal(t, tx, readTx)
 	assert.Equal(t, clientKP.Address(), readClientAccountID)
 	assert.NoError(t, err)
@@ -1793,7 +1934,7 @@ func TestReadChallengeTx_validSignedByServer(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 	)
 	assert.NoError(t, err)
@@ -1802,7 +1943,7 @@ func TestReadChallengeTx_validSignedByServer(t *testing.T) {
 	assert.NoError(t, err)
 	tx64, err := tx.Base64()
 	require.NoError(t, err)
-	readTx, readClientAccountID, _, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
+	readTx, readClientAccountID, _, _, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
 	assert.Equal(t, tx, readTx)
 	assert.Equal(t, clientKP.Address(), readClientAccountID)
 	assert.NoError(t, err)
@@ -1828,14 +1969,14 @@ func TestReadChallengeTx_invalidNotSignedByServer(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 	)
 	assert.NoError(t, err)
 
 	tx64, err := tx.Base64()
 	require.NoError(t, err)
-	readTx, readClientAccountID, _, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
+	readTx, readClientAccountID, _, _, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
 	assert.Equal(t, tx, readTx)
 	assert.Equal(t, clientKP.Address(), readClientAccountID)
 	assert.EqualError(t, err, "transaction not signed by "+serverKP.Address())
@@ -1861,7 +2002,7 @@ func TestReadChallengeTx_invalidCorrupted(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 	)
 	assert.NoError(t, err)
@@ -1871,14 +2012,14 @@ func TestReadChallengeTx_invalidCorrupted(t *testing.T) {
 	tx64, err := tx.Base64()
 	require.NoError(t, err)
 	tx64 = strings.ReplaceAll(tx64, "A", "B")
-	readTx, readClientAccountID, _, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
+	readTx, readClientAccountID, _, _, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
 	assert.Nil(t, readTx)
 	assert.Equal(t, "", readClientAccountID)
 	assert.EqualError(
 		t,
 		err,
 		"could not parse challenge: unable to unmarshal transaction envelope: "+
-			"xdr:decode: switch '68174086' is not valid enum value for union",
+			"decoding EnvelopeType: '68174086' is not a valid EnvelopeType enum value",
 	)
 }
 
@@ -1902,7 +2043,7 @@ func TestReadChallengeTx_invalidServerAccountIDMismatch(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 	)
 	assert.NoError(t, err)
@@ -1911,7 +2052,7 @@ func TestReadChallengeTx_invalidServerAccountIDMismatch(t *testing.T) {
 	assert.NoError(t, err)
 	tx64, err := tx.Base64()
 	require.NoError(t, err)
-	readTx, readClientAccountID, _, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
+	readTx, readClientAccountID, _, _, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
 	assert.Equal(t, tx, readTx)
 	assert.Equal(t, "", readClientAccountID)
 	assert.EqualError(t, err, "transaction source account is not equal to server's account")
@@ -1937,7 +2078,7 @@ func TestReadChallengeTx_invalidSeqNoNotZero(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 	)
 	assert.NoError(t, err)
@@ -1946,7 +2087,7 @@ func TestReadChallengeTx_invalidSeqNoNotZero(t *testing.T) {
 	assert.NoError(t, err)
 	tx64, err := tx.Base64()
 	require.NoError(t, err)
-	readTx, readClientAccountID, _, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
+	readTx, readClientAccountID, _, _, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
 	assert.Equal(t, tx, readTx)
 	assert.Equal(t, "", readClientAccountID)
 	assert.EqualError(t, err, "transaction sequence number must be 0")
@@ -1972,7 +2113,7 @@ func TestReadChallengeTx_invalidTimeboundsInfinite(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	assert.NoError(t, err)
@@ -1981,7 +2122,7 @@ func TestReadChallengeTx_invalidTimeboundsInfinite(t *testing.T) {
 	assert.NoError(t, err)
 	tx64, err := tx.Base64()
 	require.NoError(t, err)
-	readTx, readClientAccountID, _, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
+	readTx, readClientAccountID, _, _, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
 	assert.Equal(t, tx, readTx)
 	assert.Equal(t, "", readClientAccountID)
 	assert.EqualError(t, err, "transaction requires non-infinite timebounds")
@@ -2007,7 +2148,7 @@ func TestReadChallengeTx_invalidTimeboundsOutsideRange(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimebounds(0, 100),
+			Preconditions:        Preconditions{TimeBounds: NewTimebounds(0, 100)},
 		},
 	)
 	assert.NoError(t, err)
@@ -2016,7 +2157,80 @@ func TestReadChallengeTx_invalidTimeboundsOutsideRange(t *testing.T) {
 	assert.NoError(t, err)
 	tx64, err := tx.Base64()
 	require.NoError(t, err)
-	readTx, readClientAccountID, _, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
+	readTx, readClientAccountID, _, _, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
+	assert.Equal(t, tx, readTx)
+	assert.Equal(t, "", readClientAccountID)
+	assert.Error(t, err)
+	assert.Regexp(t, "transaction is not within range of the specified timebounds", err.Error())
+}
+
+func TestReadChallengeTx_validTimeboundsWithGracePeriod(t *testing.T) {
+	serverKP := newKeypair0()
+	clientKP := newKeypair1()
+	txSource := NewSimpleAccount(serverKP.Address(), -1)
+	op := ManageData{
+		SourceAccount: clientKP.Address(),
+		Name:          "testanchor.stellar.org auth",
+		Value:         []byte(base64.StdEncoding.EncodeToString(make([]byte, 48))),
+	}
+	webAuthDomainOp := ManageData{
+		SourceAccount: serverKP.Address(),
+		Name:          "web_auth_domain",
+		Value:         []byte("testwebauth.stellar.org"),
+	}
+	unixNow := time.Now().UTC().Unix()
+	tx, err := NewTransaction(
+		TransactionParams{
+			SourceAccount:        &txSource,
+			IncrementSequenceNum: true,
+			Operations:           []Operation{&op, &webAuthDomainOp},
+			BaseFee:              MinBaseFee,
+			Preconditions:        Preconditions{TimeBounds: NewTimebounds(unixNow+5*59, unixNow+60*60)},
+		},
+	)
+	assert.NoError(t, err)
+
+	tx, err = tx.Sign(network.TestNetworkPassphrase, serverKP)
+	assert.NoError(t, err)
+	tx64, err := tx.Base64()
+	require.NoError(t, err)
+	readTx, readClientAccountID, _, _, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
+	assert.Equal(t, tx, readTx)
+	assert.Equal(t, clientKP.Address(), readClientAccountID)
+	assert.NoError(t, err)
+}
+
+func TestReadChallengeTx_invalidTimeboundsWithGracePeriod(t *testing.T) {
+	serverKP := newKeypair0()
+	clientKP := newKeypair1()
+	txSource := NewSimpleAccount(serverKP.Address(), -1)
+	op := ManageData{
+		SourceAccount: clientKP.Address(),
+		Name:          "testanchor.stellar.org auth",
+		Value:         []byte(base64.StdEncoding.EncodeToString(make([]byte, 48))),
+	}
+	webAuthDomainOp := ManageData{
+		SourceAccount: serverKP.Address(),
+		Name:          "web_auth_domain",
+		Value:         []byte("testwebauth.stellar.org"),
+	}
+	unixNow := time.Now().UTC().Unix()
+	tx, err := NewTransaction(
+		TransactionParams{
+			SourceAccount:        &txSource,
+			IncrementSequenceNum: true,
+			Operations:           []Operation{&op, &webAuthDomainOp},
+			BaseFee:              MinBaseFee,
+			Preconditions:        Preconditions{TimeBounds: NewTimebounds(unixNow+5*61, unixNow+60*60)},
+		},
+	)
+	assert.NoError(t, err)
+
+	tx, err = tx.Sign(network.TestNetworkPassphrase, serverKP)
+	assert.NoError(t, err)
+	tx64, err := tx.Base64()
+	require.NoError(t, err)
+	readTx, readClientAccountID, _, _, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
 	assert.Equal(t, tx, readTx)
 	assert.Equal(t, "", readClientAccountID)
 	assert.Error(t, err)
@@ -2037,7 +2251,7 @@ func TestReadChallengeTx_invalidOperationWrongType(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(300),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(300)},
 		},
 	)
 	assert.NoError(t, err)
@@ -2046,7 +2260,7 @@ func TestReadChallengeTx_invalidOperationWrongType(t *testing.T) {
 	assert.NoError(t, err)
 	tx64, err := tx.Base64()
 	require.NoError(t, err)
-	readTx, readClientAccountID, _, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
+	readTx, readClientAccountID, _, _, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
 	assert.Equal(t, tx, readTx)
 	assert.Equal(t, "", readClientAccountID)
 	assert.EqualError(t, err, "operation type should be manage_data")
@@ -2065,7 +2279,7 @@ func TestReadChallengeTx_invalidOperationNoSourceAccount(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(300),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(300)},
 		},
 	)
 	assert.NoError(t, err)
@@ -2074,7 +2288,7 @@ func TestReadChallengeTx_invalidOperationNoSourceAccount(t *testing.T) {
 	assert.NoError(t, err)
 	tx64, err := tx.Base64()
 	require.NoError(t, err)
-	_, _, _, err = ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
+	_, _, _, _, err = ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
 	assert.EqualError(t, err, "operation should have a source account")
 }
 
@@ -2098,7 +2312,7 @@ func TestReadChallengeTx_invalidDataValueWrongEncodedLength(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(300),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(300)},
 		},
 	)
 	assert.NoError(t, err)
@@ -2107,7 +2321,7 @@ func TestReadChallengeTx_invalidDataValueWrongEncodedLength(t *testing.T) {
 	assert.NoError(t, err)
 	tx64, err := tx.Base64()
 	require.NoError(t, err)
-	readTx, readClientAccountID, _, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
+	readTx, readClientAccountID, _, _, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
 	assert.Equal(t, tx, readTx)
 	assert.Equal(t, clientKP.Address(), readClientAccountID)
 	assert.EqualError(t, err, "random nonce encoded as base64 should be 64 bytes long")
@@ -2133,7 +2347,7 @@ func TestReadChallengeTx_invalidDataValueCorruptBase64(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(300),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(300)},
 		},
 	)
 	assert.NoError(t, err)
@@ -2142,7 +2356,7 @@ func TestReadChallengeTx_invalidDataValueCorruptBase64(t *testing.T) {
 	assert.NoError(t, err)
 	tx64, err := tx.Base64()
 	require.NoError(t, err)
-	readTx, readClientAccountID, _, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
+	readTx, readClientAccountID, _, _, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
 	assert.Equal(t, tx, readTx)
 	assert.Equal(t, clientKP.Address(), readClientAccountID)
 	assert.EqualError(t, err, "failed to decode random nonce provided in manage_data operation: illegal base64 data at input byte 37")
@@ -2168,7 +2382,7 @@ func TestReadChallengeTx_invalidDataValueWrongByteLength(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 	)
 	assert.NoError(t, err)
@@ -2178,7 +2392,7 @@ func TestReadChallengeTx_invalidDataValueWrongByteLength(t *testing.T) {
 	tx64, err := tx.Base64()
 	assert.NoError(t, err)
 
-	readTx, readClientAccountID, _, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
+	readTx, readClientAccountID, _, _, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
 	assert.Equal(t, tx, readTx)
 	assert.Equal(t, clientKP.Address(), readClientAccountID)
 	assert.EqualError(t, err, "random nonce before encoding as base64 should be 48 bytes long")
@@ -2193,6 +2407,7 @@ func TestReadChallengeTx_acceptsV0AndV1Transactions(t *testing.T) {
 		"testanchor.stellar.org",
 		network.TestNetworkPassphrase,
 		time.Hour,
+		nil,
 	)
 	assert.NoError(t, err)
 
@@ -2207,7 +2422,7 @@ func TestReadChallengeTx_acceptsV0AndV1Transactions(t *testing.T) {
 	assert.NoError(t, err)
 
 	for _, challenge := range []string{v1Challenge, v0Challenge} {
-		parsedTx, clientAccountID, _, err := ReadChallengeTx(
+		parsedTx, clientAccountID, _, _, err := ReadChallengeTx(
 			challenge,
 			kp0.Address(),
 			network.TestNetworkPassphrase,
@@ -2233,6 +2448,7 @@ func TestReadChallengeTx_forbidsFeeBumpTransactions(t *testing.T) {
 		"testanchor.stellar.org",
 		network.TestNetworkPassphrase,
 		time.Hour,
+		nil,
 	)
 	assert.NoError(t, err)
 
@@ -2251,7 +2467,7 @@ func TestReadChallengeTx_forbidsFeeBumpTransactions(t *testing.T) {
 
 	challenge, err := feeBumpTx.Base64()
 	assert.NoError(t, err)
-	_, _, _, err = ReadChallengeTx(
+	_, _, _, _, err = ReadChallengeTx(
 		challenge,
 		kp0.Address(),
 		network.TestNetworkPassphrase,
@@ -2261,19 +2477,48 @@ func TestReadChallengeTx_forbidsFeeBumpTransactions(t *testing.T) {
 	assert.EqualError(t, err, "challenge cannot be a fee bump transaction")
 }
 
-func TestReadChallengeTx_forbidsMuxedAccounts(t *testing.T) {
+func TestReadChallengeTx_allowsMuxedAccountsForClientAccountId(t *testing.T) {
 	kp0 := newKeypair0()
+	kp1 := newKeypair1()
+	aid := xdr.MustAddress(kp1.Address())
+	muxedAccount := xdr.MuxedAccount{
+		Type: xdr.CryptoKeyTypeKeyTypeMuxedEd25519,
+		Med25519: &xdr.MuxedAccountMed25519{
+			Id:      0xcafebabe,
+			Ed25519: *aid.Ed25519,
+		},
+	}
 	tx, err := BuildChallengeTx(
 		kp0.Seed(),
-		kp0.Address(),
+		muxedAccount.Address(),
 		"testwebauth.stellar.org",
 		"testanchor.stellar.org",
 		network.TestNetworkPassphrase,
 		time.Hour,
+		nil,
 	)
-
-	env := tx.ToXDR()
 	assert.NoError(t, err)
+
+	challenge, err := marshallBase64(tx.ToXDR(), tx.Signatures())
+	assert.NoError(t, err)
+
+	tx, _, _, _, err = ReadChallengeTx(
+		challenge,
+		kp0.Address(),
+		network.TestNetworkPassphrase,
+		"testwebauth.stellar.org",
+		[]string{"testanchor.stellar.org"},
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, tx.envelope.Operations()[0].SourceAccount, &muxedAccount)
+}
+
+func TestReadChallengeTransaction_forbidsMuxedTxSourceAccount(t *testing.T) {
+	kp0 := newKeypair0()
+	kp1 := newKeypair1()
+	homeDomain := "testanchor.stellar.org"
+	webAuthDomain := "testwebauth.stellar.org"
+
 	aid := xdr.MustAddress(kp0.Address())
 	muxedAccount := xdr.MuxedAccount{
 		Type: xdr.CryptoKeyTypeKeyTypeMuxedEd25519,
@@ -2282,20 +2527,174 @@ func TestReadChallengeTx_forbidsMuxedAccounts(t *testing.T) {
 			Ed25519: *aid.Ed25519,
 		},
 	}
-	*env.V1.Tx.Operations[0].SourceAccount = muxedAccount
+	serverAccount := SimpleAccount{
+		AccountID: muxedAccount.Address(),
+		Sequence:  0,
+	}
+	randomNonce, _ := generateRandomNonce(48)
+	randomNonceToString := base64.StdEncoding.EncodeToString(randomNonce)
+	currentTime := time.Now().UTC()
+	maxTime := currentTime.Add(300)
 
-	challenge, err := marshallBase64(env, env.Signatures())
+	tx, err := NewTransaction(
+		TransactionParams{
+			SourceAccount:        &serverAccount,
+			IncrementSequenceNum: false,
+			Operations: []Operation{
+				&ManageData{
+					SourceAccount: kp1.Address(),
+					Name:          homeDomain + " auth",
+					Value:         []byte(randomNonceToString),
+				},
+				&ManageData{
+					SourceAccount: serverAccount.GetAccountID(),
+					Name:          "web_auth_domain",
+					Value:         []byte(webAuthDomain),
+				},
+			},
+			BaseFee: MinBaseFee,
+			Memo:    MemoID(1),
+			Preconditions: Preconditions{
+				TimeBounds: NewTimebounds(currentTime.Unix(), maxTime.Unix()),
+			},
+		},
+	)
 	assert.NoError(t, err)
 
-	_, _, _, err = ReadChallengeTx(
+	tx, err = tx.Sign(network.TestNetworkPassphrase, kp0)
+	assert.NoError(t, err)
+
+	challenge, err := marshallBase64(tx.ToXDR(), tx.Signatures())
+	assert.NoError(t, err)
+
+	_, _, _, _, err = ReadChallengeTx(
 		challenge,
 		kp0.Address(),
 		network.TestNetworkPassphrase,
-		"testwebauth.stellar.org",
-		[]string{"testanchor.stellar.org"},
+		webAuthDomain,
+		[]string{homeDomain},
 	)
-	errorMessage := "only valid Ed25519 accounts are allowed in challenge transactions"
-	assert.Contains(t, err.Error(), errorMessage)
+	assert.EqualError(t, err, "invalid source account: only valid Ed25519 accounts are allowed in challenge transactions")
+}
+
+func TestReadChallengeTransaction_forbidsMemoWithMuxedClientAccount(t *testing.T) {
+	kp0 := newKeypair0()
+	kp1 := newKeypair1()
+	homeDomain := "testanchor.stellar.org"
+	webAuthDomain := "testwebauth.stellar.org"
+
+	serverAccount := SimpleAccount{
+		AccountID: kp0.Address(),
+		Sequence:  0,
+	}
+	aid := xdr.MustAddress(kp1.Address())
+	muxedAccount := xdr.MuxedAccount{
+		Type: xdr.CryptoKeyTypeKeyTypeMuxedEd25519,
+		Med25519: &xdr.MuxedAccountMed25519{
+			Id:      0xcafebabe,
+			Ed25519: *aid.Ed25519,
+		},
+	}
+	randomNonce, _ := generateRandomNonce(48)
+	randomNonceToString := base64.StdEncoding.EncodeToString(randomNonce)
+	currentTime := time.Now().UTC()
+	maxTime := currentTime.Add(time.Second * 300)
+
+	tx, err := NewTransaction(
+		TransactionParams{
+			SourceAccount:        &serverAccount,
+			IncrementSequenceNum: false,
+			Operations: []Operation{
+				&ManageData{
+					SourceAccount: muxedAccount.Address(),
+					Name:          homeDomain + " auth",
+					Value:         []byte(randomNonceToString),
+				},
+				&ManageData{
+					SourceAccount: serverAccount.GetAccountID(),
+					Name:          "web_auth_domain",
+					Value:         []byte(webAuthDomain),
+				},
+			},
+			BaseFee: MinBaseFee,
+			Memo:    MemoID(1),
+			Preconditions: Preconditions{
+				TimeBounds: NewTimebounds(currentTime.Unix(), maxTime.Unix()),
+			},
+		},
+	)
+	assert.NoError(t, err)
+
+	tx, err = tx.Sign(network.TestNetworkPassphrase, kp0)
+	assert.NoError(t, err)
+
+	challenge, err := marshallBase64(tx.ToXDR(), tx.Signatures())
+	assert.NoError(t, err)
+
+	_, _, _, _, err = ReadChallengeTx(
+		challenge,
+		kp0.Address(),
+		network.TestNetworkPassphrase,
+		webAuthDomain,
+		[]string{homeDomain},
+	)
+	assert.EqualError(t, err, "memos are not valid for challenge transactions with a muxed client account")
+}
+
+func TestReadChallengeTransaction_forbidsNonIdMemo(t *testing.T) {
+	kp0 := newKeypair0()
+	kp1 := newKeypair1()
+	homeDomain := "testanchor.stellar.org"
+	webAuthDomain := "testwebauth.stellar.org"
+
+	serverAccount := SimpleAccount{
+		AccountID: kp0.Address(),
+		Sequence:  0,
+	}
+	randomNonce, _ := generateRandomNonce(48)
+	randomNonceToString := base64.StdEncoding.EncodeToString(randomNonce)
+	currentTime := time.Now().UTC()
+	maxTime := currentTime.Add(300)
+
+	tx, err := NewTransaction(
+		TransactionParams{
+			SourceAccount:        &serverAccount,
+			IncrementSequenceNum: false,
+			Operations: []Operation{
+				&ManageData{
+					SourceAccount: kp1.Address(),
+					Name:          homeDomain + " auth",
+					Value:         []byte(randomNonceToString),
+				},
+				&ManageData{
+					SourceAccount: serverAccount.GetAccountID(),
+					Name:          "web_auth_domain",
+					Value:         []byte(webAuthDomain),
+				},
+			},
+			BaseFee: MinBaseFee,
+			Memo:    MemoText("test"),
+			Preconditions: Preconditions{
+				TimeBounds: NewTimebounds(currentTime.Unix(), maxTime.Unix()),
+			},
+		},
+	)
+	assert.NoError(t, err)
+
+	tx, err = tx.Sign(network.TestNetworkPassphrase, kp0)
+	assert.NoError(t, err)
+
+	challenge, err := marshallBase64(tx.ToXDR(), tx.Signatures())
+	assert.NoError(t, err)
+
+	_, _, _, _, err = ReadChallengeTx(
+		challenge,
+		kp0.Address(),
+		network.TestNetworkPassphrase,
+		webAuthDomain,
+		[]string{homeDomain},
+	)
+	assert.EqualError(t, err, "invalid memo, only ID memos are permitted")
 }
 
 func TestReadChallengeTx_doesVerifyHomeDomainFailure(t *testing.T) {
@@ -2318,7 +2717,7 @@ func TestReadChallengeTx_doesVerifyHomeDomainFailure(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 	)
 	assert.NoError(t, err)
@@ -2327,7 +2726,7 @@ func TestReadChallengeTx_doesVerifyHomeDomainFailure(t *testing.T) {
 	assert.NoError(t, err)
 	tx64, err := tx.Base64()
 	require.NoError(t, err)
-	_, _, _, err = ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"willfail"})
+	_, _, _, _, err = ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"willfail"})
 	assert.EqualError(t, err, "operation key does not match any homeDomains passed (key=\"testanchor.stellar.org auth\", homeDomains=[willfail])")
 }
 
@@ -2351,7 +2750,7 @@ func TestReadChallengeTx_doesVerifyHomeDomainSuccess(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 	)
 	assert.NoError(t, err)
@@ -2360,7 +2759,7 @@ func TestReadChallengeTx_doesVerifyHomeDomainSuccess(t *testing.T) {
 	assert.NoError(t, err)
 	tx64, err := tx.Base64()
 	require.NoError(t, err)
-	_, _, _, err = ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
+	_, _, _, _, err = ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
 	assert.Equal(t, nil, err)
 }
 
@@ -2389,7 +2788,7 @@ func TestReadChallengeTx_allowsAdditionalManageDataOpsWithSourceAccountSetToServ
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op1, &op2, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 	)
 	assert.NoError(t, err)
@@ -2398,7 +2797,7 @@ func TestReadChallengeTx_allowsAdditionalManageDataOpsWithSourceAccountSetToServ
 	assert.NoError(t, err)
 	tx64, err := tx.Base64()
 	require.NoError(t, err)
-	readTx, readClientAccountID, _, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
+	readTx, readClientAccountID, _, _, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
 	assert.Equal(t, tx, readTx)
 	assert.Equal(t, clientKP.Address(), readClientAccountID)
 	assert.NoError(t, err)
@@ -2429,7 +2828,7 @@ func TestReadChallengeTx_disallowsAdditionalManageDataOpsWithoutSourceAccountSet
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op1, &op2, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 	)
 	assert.NoError(t, err)
@@ -2438,7 +2837,7 @@ func TestReadChallengeTx_disallowsAdditionalManageDataOpsWithoutSourceAccountSet
 	assert.NoError(t, err)
 	tx64, err := tx.Base64()
 	require.NoError(t, err)
-	_, _, _, err = ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
+	_, _, _, _, err = ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
 	assert.EqualError(t, err, "subsequent operations are unrecognized")
 }
 
@@ -2466,7 +2865,7 @@ func TestReadChallengeTx_disallowsAdditionalOpsOfOtherTypes(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op1, &op2, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(300),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(300)},
 		},
 	)
 	assert.NoError(t, err)
@@ -2475,7 +2874,7 @@ func TestReadChallengeTx_disallowsAdditionalOpsOfOtherTypes(t *testing.T) {
 	assert.NoError(t, err)
 	tx64, err := tx.Base64()
 	require.NoError(t, err)
-	readTx, readClientAccountID, _, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
+	readTx, readClientAccountID, _, _, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
 	assert.Equal(t, tx, readTx)
 	assert.Equal(t, clientKP.Address(), readClientAccountID)
 	assert.EqualError(t, err, "operation type should be manage_data")
@@ -2501,7 +2900,7 @@ func TestReadChallengeTx_matchesHomeDomain(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op1, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(300),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(300)},
 		},
 	)
 	assert.NoError(t, err)
@@ -2509,7 +2908,7 @@ func TestReadChallengeTx_matchesHomeDomain(t *testing.T) {
 	assert.NoError(t, err)
 	tx64, err := tx.Base64()
 	require.NoError(t, err)
-	_, _, matchedHomeDomain, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
+	_, _, matchedHomeDomain, _, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
 	require.NoError(t, err)
 	assert.Equal(t, matchedHomeDomain, "testanchor.stellar.org")
 }
@@ -2534,7 +2933,7 @@ func TestReadChallengeTx_doesNotMatchHomeDomain(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op1, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(300),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(300)},
 		},
 	)
 	assert.NoError(t, err)
@@ -2542,7 +2941,7 @@ func TestReadChallengeTx_doesNotMatchHomeDomain(t *testing.T) {
 	assert.NoError(t, err)
 	tx64, err := tx.Base64()
 	require.NoError(t, err)
-	_, _, matchedHomeDomain, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"not", "going", "to", "match"})
+	_, _, matchedHomeDomain, _, err := ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"not", "going", "to", "match"})
 	assert.Equal(t, matchedHomeDomain, "")
 	assert.EqualError(t, err, "operation key does not match any homeDomains passed (key=\"testanchor.stellar.org auth\", homeDomains=[not going to match])")
 }
@@ -2562,7 +2961,7 @@ func TestReadChallengeTx_validWhenWebAuthDomainMissing(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op1},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(300),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(300)},
 		},
 	)
 	assert.NoError(t, err)
@@ -2570,7 +2969,7 @@ func TestReadChallengeTx_validWhenWebAuthDomainMissing(t *testing.T) {
 	assert.NoError(t, err)
 	tx64, err := tx.Base64()
 	require.NoError(t, err)
-	_, _, _, err = ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
+	_, _, _, _, err = ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
 	assert.NoError(t, err)
 }
 
@@ -2594,7 +2993,7 @@ func TestReadChallengeTx_invalidWebAuthDomainSourceAccount(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op1, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(300),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(300)},
 		},
 	)
 	assert.NoError(t, err)
@@ -2602,7 +3001,7 @@ func TestReadChallengeTx_invalidWebAuthDomainSourceAccount(t *testing.T) {
 	assert.NoError(t, err)
 	tx64, err := tx.Base64()
 	require.NoError(t, err)
-	_, _, _, err = ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
+	_, _, _, _, err = ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
 	assert.EqualError(t, err, `web auth domain operation must have server source account`)
 }
 
@@ -2626,7 +3025,7 @@ func TestReadChallengeTx_invalidWebAuthDomain(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op1, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(300),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(300)},
 		},
 	)
 	assert.NoError(t, err)
@@ -2634,7 +3033,7 @@ func TestReadChallengeTx_invalidWebAuthDomain(t *testing.T) {
 	assert.NoError(t, err)
 	tx64, err := tx.Base64()
 	require.NoError(t, err)
-	_, _, _, err = ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
+	_, _, _, _, err = ReadChallengeTx(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"})
 	assert.EqualError(t, err, `web auth domain operation value is "testwebauth.example.org" but expect "testwebauth.stellar.org"`)
 }
 
@@ -2659,7 +3058,7 @@ func TestVerifyChallengeTxThreshold_invalidServer(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		clientKP,
@@ -2695,7 +3094,7 @@ func TestVerifyChallengeTxThreshold_validServerAndClientKeyMeetingThreshold(t *t
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP,
@@ -2736,7 +3135,7 @@ func TestVerifyChallengeTxThreshold_validServerAndMultipleClientKeyMeetingThresh
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP1, clientKP2,
@@ -2791,7 +3190,7 @@ func TestVerifyChallengeTxThreshold_validServerAndMultipleClientKeyMeetingThresh
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP1, clientKP2,
@@ -2842,7 +3241,7 @@ func TestVerifyChallengeTxThreshold_validServerAndMultipleClientKeyMeetingThresh
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP1, clientKP2,
@@ -2883,7 +3282,7 @@ func TestVerifyChallengeTxThreshold_invalidServerAndMultipleClientKeyNotMeetingT
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP1, clientKP2,
@@ -2922,7 +3321,7 @@ func TestVerifyChallengeTxThreshold_invalidClientKeyUnrecognized(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP1, clientKP2, clientKP3,
@@ -2958,7 +3357,7 @@ func TestVerifyChallengeTxThreshold_invalidNoSigners(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP1, clientKP2, clientKP3,
@@ -2990,7 +3389,7 @@ func TestVerifyChallengeTxThreshold_weightsAddToMoreThan8Bits(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP1, clientKP2,
@@ -3032,13 +3431,13 @@ func TestVerifyChallengeTxThreshold_matchesHomeDomain(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op1, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(300),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(300)},
 		},
 	)
 	assert.NoError(t, err)
 	tx, err = tx.Sign(network.TestNetworkPassphrase, serverKP)
 	assert.NoError(t, err)
-	tx64, err := tx.Base64()
+	_, err = tx.Base64()
 	require.NoError(t, err)
 
 	threshold := Threshold(1)
@@ -3048,7 +3447,8 @@ func TestVerifyChallengeTxThreshold_matchesHomeDomain(t *testing.T) {
 
 	tx, err = tx.Sign(network.TestNetworkPassphrase, clientKP)
 	assert.NoError(t, err)
-	tx64, err = tx.Base64()
+	tx64, err := tx.Base64()
+	require.NoError(t, err)
 
 	_, err = VerifyChallengeTxThreshold(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"}, threshold, signerSummary)
 	require.NoError(t, err)
@@ -3074,7 +3474,7 @@ func TestVerifyChallengeTxThreshold_doesNotMatchHomeDomain(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op1, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(300),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(300)},
 		},
 	)
 	assert.NoError(t, err)
@@ -3112,7 +3512,7 @@ func TestVerifyChallengeTxThreshold_doesVerifyHomeDomainFailure(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP,
@@ -3148,7 +3548,7 @@ func TestVerifyChallengeTxThreshold_doesVerifyHomeDomainSuccess(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP,
@@ -3194,7 +3594,7 @@ func TestVerifyChallengeTxThreshold_allowsAdditionalManageDataOpsWithSourceAccou
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op1, &op2, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP,
@@ -3240,7 +3640,7 @@ func TestVerifyChallengeTxThreshold_disallowsAdditionalManageDataOpsWithoutSourc
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op1, &op2, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP,
@@ -3282,7 +3682,7 @@ func TestVerifyChallengeTxThreshold_disallowsAdditionalOpsOfOtherTypes(t *testin
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op1, &op2, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP,
@@ -3315,7 +3715,7 @@ func TestVerifyChallengeTxThreshold_validWhenWebAuthDomainMissing(t *testing.T) 
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP,
@@ -3355,7 +3755,7 @@ func TestVerifyChallengeTxThreshold_invalidWebAuthDomainSourceAccount(t *testing
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP,
@@ -3391,7 +3791,7 @@ func TestVerifyChallengeTxThreshold_invalidWebAuthDomain(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP,
@@ -3427,7 +3827,7 @@ func TestVerifyChallengeTxSigners_invalidServer(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		clientKP,
@@ -3460,7 +3860,7 @@ func TestVerifyChallengeTxSigners_validServerAndClientMasterKey(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP,
@@ -3493,7 +3893,7 @@ func TestVerifyChallengeTxSigners_invalidServerAndNoClient(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP,
@@ -3527,7 +3927,7 @@ func TestVerifyChallengeTxSigners_invalidServerAndUnrecognizedClient(t *testing.
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, unrecognizedKP,
@@ -3561,7 +3961,7 @@ func TestVerifyChallengeTxSigners_validServerAndMultipleClientSigners(t *testing
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP, clientKP2,
@@ -3595,7 +3995,7 @@ func TestVerifyChallengeTxSigners_validServerAndMultipleClientSignersReverseOrde
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP2, clientKP,
@@ -3629,7 +4029,7 @@ func TestVerifyChallengeTxSigners_validServerAndClientSignersNotMasterKey(t *tes
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP2,
@@ -3663,7 +4063,7 @@ func TestVerifyChallengeTxSigners_validServerAndClientSignersIgnoresServerSigner
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP2,
@@ -3697,7 +4097,7 @@ func TestVerifyChallengeTxSigners_invalidServerNoClientSignersIgnoresServerSigne
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP,
@@ -3731,7 +4131,7 @@ func TestVerifyChallengeTxSigners_validServerAndClientSignersIgnoresDuplicateSig
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP2,
@@ -3768,7 +4168,7 @@ func TestVerifyChallengeTxSigners_validIgnorePreauthTxHashAndXHash(t *testing.T)
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP2,
@@ -3802,7 +4202,7 @@ func TestVerifyChallengeTxSigners_invalidServerAndClientSignersIgnoresDuplicateS
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP2,
@@ -3836,7 +4236,7 @@ func TestVerifyChallengeTxSigners_invalidServerAndClientSignersFailsDuplicateSig
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP2, clientKP2,
@@ -3870,7 +4270,7 @@ func TestVerifyChallengeTxSigners_invalidServerAndClientSignersFailsSignerSeed(t
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP2,
@@ -3903,7 +4303,7 @@ func TestVerifyChallengeTxSigners_invalidNoSigners(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP,
@@ -3935,7 +4335,7 @@ func TestVerifyChallengeTxSigners_doesVerifyHomeDomainFailure(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP,
@@ -3967,19 +4367,20 @@ func TestVerifyChallengeTxSigners_matchesHomeDomain(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op1, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(300),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(300)},
 		},
 	)
 	assert.NoError(t, err)
 	tx, err = tx.Sign(network.TestNetworkPassphrase, serverKP)
 	assert.NoError(t, err)
-	tx64, err := tx.Base64()
+	_, err = tx.Base64()
 	require.NoError(t, err)
 
 	signers := []string{clientKP.Address()}
 	tx, err = tx.Sign(network.TestNetworkPassphrase, clientKP)
-	tx64, err = tx.Base64()
-	assert.NoError(t, err)
+	require.NoError(t, err)
+	tx64, err := tx.Base64()
+	require.NoError(t, err)
 
 	_, err = VerifyChallengeTxSigners(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"testanchor.stellar.org"}, signers...)
 	require.NoError(t, err)
@@ -4006,19 +4407,20 @@ func TestVerifyChallengeTxSigners_doesNotMatchHomeDomain(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op1, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(300),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(300)},
 		},
 	)
 	assert.NoError(t, err)
 	tx, err = tx.Sign(network.TestNetworkPassphrase, serverKP)
 	assert.NoError(t, err)
-	tx64, err := tx.Base64()
+	_, err = tx.Base64()
 	require.NoError(t, err)
 
 	signers := []string{clientKP.Address()}
 	tx, err = tx.Sign(network.TestNetworkPassphrase, clientKP)
-	tx64, err = tx.Base64()
-	assert.NoError(t, err)
+	require.NoError(t, err)
+	tx64, err := tx.Base64()
+	require.NoError(t, err)
 
 	_, err = VerifyChallengeTxSigners(tx64, serverKP.Address(), network.TestNetworkPassphrase, "testwebauth.stellar.org", []string{"not", "going", "to", "match"}, signers...)
 	assert.EqualError(t, err, "operation key does not match any homeDomains passed (key=\"testanchor.stellar.org auth\", homeDomains=[not going to match])")
@@ -4045,7 +4447,7 @@ func TestVerifyChallengeTxSigners_doesVerifyHomeDomainSuccess(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP,
@@ -4082,7 +4484,7 @@ func TestVerifyChallengeTxSigners_allowsAdditionalManageDataOpsWithSourceAccount
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op1, &op2, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP,
@@ -4120,7 +4522,7 @@ func TestVerifyChallengeTxSigners_disallowsAdditionalManageDataOpsWithoutSourceA
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op1, &op2, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP,
@@ -4157,7 +4559,7 @@ func TestVerifyChallengeTxSigners_disallowsAdditionalOpsOfOtherTypes(t *testing.
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op1, &op2, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP,
@@ -4184,7 +4586,7 @@ func TestVerifyChallengeTxSigners_validWhenWebAuthDomainMissing(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP,
@@ -4218,7 +4620,7 @@ func TestVerifyChallengeTxSigners_invalidWebAuthDomainSourceAccount(t *testing.T
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP,
@@ -4249,7 +4651,7 @@ func TestVerifyChallengeTxSigners_invalidWebAuthDomain(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op, &webAuthDomainOp},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 		network.TestNetworkPassphrase,
 		serverKP, clientKP,
@@ -4275,7 +4677,7 @@ func TestVerifyTxSignatureUnsignedTx(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&createAccount},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewTimeout(1000),
+			Preconditions:        Preconditions{TimeBounds: NewTimeout(1000)},
 		},
 	)
 	assert.NoError(t, err)
@@ -4301,7 +4703,7 @@ func TestVerifyTxSignatureSingle(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&createAccount},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	assert.NoError(t, err)
@@ -4327,7 +4729,7 @@ func TestVerifyTxSignatureMultiple(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&createAccount},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	assert.NoError(t, err)
@@ -4355,7 +4757,7 @@ func TestVerifyTxSignatureInvalid(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&createAccount},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	assert.NoError(t, err)
@@ -4367,4 +4769,324 @@ func TestVerifyTxSignatureInvalid(t *testing.T) {
 	if assert.Error(t, err) {
 		assert.Contains(t, err.Error(), "transaction not signed by GATBMIXTHXYKSUZSZUEJKACZ2OS2IYUWP2AIF3CA32PIDLJ67CH6Y5UY")
 	}
+}
+
+func TestClaimableBalanceIds(t *testing.T) {
+	aKeys := keypair.MustParseFull("SC4REDCJNPFAYW4SMH44KNGO5JRDQ72G4HE6GILRBSICI3M2IUOC7AAL")
+	A := "MDUJNO4HVE4YCQHV7LINPWVDQJFSAPHHUNSTT64YRBCCRZ5UYUXAWAAAAAAAAAAE2IUOE"
+	B := "GCACCFMIWJAHUUASSE2WC7V6VVDLYRLSJYZ3DJEXCG523FSHTNII6KOG"
+	aMuxedAccount := NewSimpleAccount(A, int64(5894915628204034))
+
+	// Create the operation and submit it in a transaction.
+	claimableBalanceEntry := CreateClaimableBalance{
+		Destinations: []Claimant{
+			NewClaimant(B, &UnconditionalPredicate),
+		},
+		Asset:  NativeAsset{},
+		Amount: "420",
+	}
+
+	// Build, sign, and submit the transaction
+	tx, err := NewTransaction(
+		TransactionParams{
+			SourceAccount:        &aMuxedAccount,
+			IncrementSequenceNum: true,
+			BaseFee:              MinBaseFee,
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
+			Operations:           []Operation{&claimableBalanceEntry},
+		},
+	)
+	assert.NoError(t, err)
+	tx, err = tx.Sign(network.TestNetworkPassphrase, aKeys)
+	assert.NoError(t, err)
+	calculatedBalanceId, err := tx.ClaimableBalanceID(0)
+	assert.NoError(t, err)
+
+	var txResult xdr.TransactionResult
+	resultXdr := "AAAAAAAAAGQAAAAAAAAAAQAAAAAAAAAOAAAAAAAAAABw2JZZYIt4n/WXKcnDow3mbTBMPrOnldetgvGUlpTSEQAAAAA="
+	err = xdr.SafeUnmarshalBase64(resultXdr, &txResult)
+	assert.NoError(t, err)
+
+	results, ok := txResult.OperationResults()
+	assert.True(t, ok)
+
+	// We look at the first result since our first (and only) operation in the
+	// transaction was the CreateClaimableBalanceOp.
+	operationResult := results[0].MustTr().CreateClaimableBalanceResult
+	actualBalanceId, err := xdr.MarshalHex(operationResult.BalanceId)
+	assert.NoError(t, err)
+
+	assert.Equal(t, actualBalanceId, calculatedBalanceId)
+}
+
+func TestTransaction_marshalUnmarshalText(t *testing.T) {
+	k := keypair.MustRandom()
+
+	tx, err := NewTransaction(
+		TransactionParams{
+			SourceAccount:        &SimpleAccount{AccountID: k.Address(), Sequence: 1},
+			IncrementSequenceNum: false,
+			BaseFee:              MinBaseFee,
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
+			Operations:           []Operation{&BumpSequence{BumpTo: 2}},
+		},
+	)
+	assert.NoError(t, err)
+	tx, err = tx.Sign(network.TestNetworkPassphrase, k)
+	assert.NoError(t, err)
+
+	b64, err := tx.Base64()
+	require.NoError(t, err)
+	t.Log("tx base64:", b64)
+
+	marshaled, err := tx.MarshalText()
+	require.NoError(t, err)
+	t.Log("tx marshaled text:", string(marshaled))
+	assert.Equal(t, b64, string(marshaled))
+
+	tx2 := &Transaction{}
+	err = tx2.UnmarshalText(marshaled)
+	require.NoError(t, err)
+	assert.Equal(t, tx, tx2)
+
+	err = (&FeeBumpTransaction{}).UnmarshalText(marshaled)
+	assert.EqualError(t, err, "transaction envelope unmarshaled into Transaction is not a transaction")
+}
+
+func TestFeeBumpTransaction_marshalUnmarshalText(t *testing.T) {
+	k := keypair.MustRandom()
+
+	tx, err := NewTransaction(
+		TransactionParams{
+			SourceAccount:        &SimpleAccount{AccountID: k.Address(), Sequence: 1},
+			IncrementSequenceNum: false,
+			BaseFee:              MinBaseFee,
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
+			Operations:           []Operation{&BumpSequence{BumpTo: 2}},
+		},
+	)
+	require.NoError(t, err)
+	tx, err = tx.Sign(network.TestNetworkPassphrase, k)
+	require.NoError(t, err)
+
+	fbtx, err := NewFeeBumpTransaction(FeeBumpTransactionParams{
+		Inner:      tx,
+		FeeAccount: k.Address(),
+		BaseFee:    MinBaseFee,
+	})
+	require.NoError(t, err)
+
+	b64, err := fbtx.Base64()
+	require.NoError(t, err)
+	t.Log("tx base64:", b64)
+
+	marshaled, err := fbtx.MarshalText()
+	require.NoError(t, err)
+	t.Log("tx marshaled text:", string(marshaled))
+	assert.Equal(t, b64, string(marshaled))
+
+	fbtx2 := &FeeBumpTransaction{}
+	err = fbtx2.UnmarshalText(marshaled)
+	require.NoError(t, err)
+	assert.Equal(t, fbtx, fbtx2)
+
+	err = (&Transaction{}).UnmarshalText(marshaled)
+	assert.EqualError(t, err, "transaction envelope unmarshaled into FeeBumpTransaction is not a fee bump transaction")
+}
+
+func TestNewGenericTransactionWithTransaction(t *testing.T) {
+	k := keypair.MustRandom()
+	txIn, err := NewTransaction(
+		TransactionParams{
+			SourceAccount:        &SimpleAccount{AccountID: k.Address(), Sequence: 1},
+			IncrementSequenceNum: false,
+			BaseFee:              MinBaseFee,
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
+			Operations:           []Operation{&BumpSequence{BumpTo: 2}},
+		},
+	)
+	require.NoError(t, err)
+
+	gtx := NewGenericTransactionWithTransaction(txIn)
+	txOut, ok := gtx.Transaction()
+	require.True(t, ok)
+	require.Equal(t, txIn, txOut)
+}
+
+func TestNewGenericTransactionWithFeeBumpTransaction(t *testing.T) {
+	k := keypair.MustRandom()
+	tx, err := NewTransaction(
+		TransactionParams{
+			SourceAccount:        &SimpleAccount{AccountID: k.Address(), Sequence: 1},
+			IncrementSequenceNum: false,
+			BaseFee:              MinBaseFee,
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
+			Operations:           []Operation{&BumpSequence{BumpTo: 2}},
+		},
+	)
+	require.NoError(t, err)
+	fbtxIn, err := NewFeeBumpTransaction(FeeBumpTransactionParams{
+		Inner:      tx,
+		FeeAccount: k.Address(),
+		BaseFee:    MinBaseFee,
+	})
+	require.NoError(t, err)
+
+	gtx := NewGenericTransactionWithFeeBumpTransaction(fbtxIn)
+	fbtxOut, ok := gtx.FeeBump()
+	require.True(t, ok)
+	require.Equal(t, fbtxIn, fbtxOut)
+}
+
+func TestGenericTransaction_marshalUnmarshalText(t *testing.T) {
+	k := keypair.MustRandom()
+
+	// GenericTransaction containing nothing.
+	gtx := &GenericTransaction{}
+	_, err := gtx.MarshalText()
+	assert.EqualError(t, err, "unable to marshal empty GenericTransaction")
+
+	// GenericTransaction containing a Transaction.
+	tx, err := NewTransaction(
+		TransactionParams{
+			SourceAccount:        &SimpleAccount{AccountID: k.Address(), Sequence: 1},
+			IncrementSequenceNum: false,
+			BaseFee:              MinBaseFee,
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
+			Operations:           []Operation{&BumpSequence{BumpTo: 2}},
+		},
+	)
+	require.NoError(t, err)
+	tx, err = tx.Sign(network.TestNetworkPassphrase, k)
+	require.NoError(t, err)
+	txb64, err := tx.Base64()
+	require.NoError(t, err)
+	t.Log("tx base64:", txb64)
+
+	gtx = tx.ToGenericTransaction()
+	marshaled, err := gtx.MarshalText()
+	require.NoError(t, err)
+	t.Log("tx marshaled text:", string(marshaled))
+	assert.Equal(t, txb64, string(marshaled))
+	gtx2 := &GenericTransaction{}
+	err = gtx2.UnmarshalText(marshaled)
+	require.NoError(t, err)
+	assert.Equal(t, gtx, gtx2)
+
+	// GenericTransaction containing a FeeBumpTransaction.
+	fbtx, err := NewFeeBumpTransaction(FeeBumpTransactionParams{
+		Inner:      tx,
+		FeeAccount: k.Address(),
+		BaseFee:    MinBaseFee,
+	})
+	require.NoError(t, err)
+	fbtxb64, err := fbtx.Base64()
+	require.NoError(t, err)
+	t.Log("fbtx base64:", fbtxb64)
+
+	fbgtx := fbtx.ToGenericTransaction()
+	marshaled, err = fbgtx.MarshalText()
+	require.NoError(t, err)
+	t.Log("fbtx marshaled text:", string(marshaled))
+	assert.Equal(t, fbtxb64, string(marshaled))
+	fbgtx2 := &GenericTransaction{}
+	err = fbgtx2.UnmarshalText(marshaled)
+	require.NoError(t, err)
+	assert.Equal(t, fbgtx, fbgtx2)
+}
+
+func TestGenericTransaction_marshalBinary(t *testing.T) {
+	k := keypair.MustRandom()
+
+	// GenericTransaction containing nothing.
+	gtx := &GenericTransaction{}
+	_, err := gtx.MarshalBinary()
+	assert.EqualError(t, err, "unable to marshal empty GenericTransaction")
+
+	// GenericTransaction containing a Transaction.
+	tx, err := NewTransaction(
+		TransactionParams{
+			SourceAccount:        &SimpleAccount{AccountID: k.Address(), Sequence: 1},
+			IncrementSequenceNum: false,
+			BaseFee:              MinBaseFee,
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
+			Operations:           []Operation{&BumpSequence{BumpTo: 2}},
+		},
+	)
+	require.NoError(t, err)
+	tx, err = tx.Sign(network.TestNetworkPassphrase, k)
+	require.NoError(t, err)
+	txb, err := tx.MarshalBinary()
+	require.NoError(t, err)
+
+	gtx = tx.ToGenericTransaction()
+	marshaled, err := gtx.MarshalBinary()
+	require.NoError(t, err)
+	assert.Equal(t, txb, marshaled)
+
+	// GenericTransaction containing a FeeBumpTransaction.
+	fbtx, err := NewFeeBumpTransaction(FeeBumpTransactionParams{
+		Inner:      tx,
+		FeeAccount: k.Address(),
+		BaseFee:    MinBaseFee,
+	})
+	require.NoError(t, err)
+	fbtxb, err := fbtx.MarshalBinary()
+	require.NoError(t, err)
+
+	fbgtx := fbtx.ToGenericTransaction()
+	marshaled, err = fbgtx.MarshalBinary()
+	require.NoError(t, err)
+	assert.Equal(t, fbtxb, marshaled)
+}
+
+func TestGenericTransaction_HashHex(t *testing.T) {
+	kp0 := newKeypair0()
+	sourceAccount := NewSimpleAccount(kp0.Address(), int64(9605939170639897))
+
+	createAccount := CreateAccount{
+		Destination: "GCCOBXW2XQNUSL467IEILE6MMCNRR66SSVL4YQADUNYYNUVREF3FIV2Z",
+		Amount:      "10",
+	}
+
+	tx, err := NewTransaction(
+		TransactionParams{
+			SourceAccount:        &sourceAccount,
+			IncrementSequenceNum: true,
+			Operations:           []Operation{&createAccount},
+			BaseFee:              MinBaseFee,
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
+		},
+	)
+	assert.NoError(t, err)
+
+	tx, err = tx.Sign(network.TestNetworkPassphrase, kp0)
+	assert.NoError(t, err)
+
+	gtx := tx.ToGenericTransaction()
+
+	expected := "1b3905ba8c3c0ecc68ae812f2d77f27c697195e8daf568740fc0f5662f65f759"
+	hashHex, err := tx.HashHex(network.TestNetworkPassphrase)
+	require.NoError(t, err)
+	assert.Equal(t, expected, hashHex)
+	hashHex, err = gtx.HashHex(network.TestNetworkPassphrase)
+	require.NoError(t, err)
+	assert.Equal(t, expected, hashHex)
+
+	fbtx, err := NewFeeBumpTransaction(FeeBumpTransactionParams{
+		Inner:      tx,
+		FeeAccount: kp0.Address(),
+		BaseFee:    MinBaseFee,
+	})
+	require.NoError(t, err)
+
+	gtx = fbtx.ToGenericTransaction()
+
+	expected = "9a194faa93e4b6efcd8da1c4b25797c666d596f3262d7db43b794b6f2db8d767"
+	hashHex, err = fbtx.HashHex(network.TestNetworkPassphrase)
+	require.NoError(t, err)
+	assert.Equal(t, expected, hashHex)
+	hashHex, err = gtx.HashHex(network.TestNetworkPassphrase)
+	require.NoError(t, err)
+	assert.Equal(t, expected, hashHex)
 }

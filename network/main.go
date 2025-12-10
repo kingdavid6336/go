@@ -4,12 +4,11 @@ package network
 
 import (
 	"bytes"
-
 	"strings"
 
-	"github.com/stellar/go/hash"
-	"github.com/stellar/go/support/errors"
-	"github.com/stellar/go/xdr"
+	"github.com/stellar/go-stellar-sdk/hash"
+	"github.com/stellar/go-stellar-sdk/support/errors"
+	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
 const (
@@ -17,6 +16,31 @@ const (
 	PublicNetworkPassphrase = "Public Global Stellar Network ; September 2015"
 	// TestNetworkPassphrase is the pass phrase used for every transaction intended for the SDF-run test network
 	TestNetworkPassphrase = "Test SDF Network ; September 2015"
+	// FutureNetworkPassphrase is the pass phrase used for every transaction intended for the SDF-run future network
+	FutureNetworkPassphrase = "Test SDF Future Network ; October 2022"
+)
+
+var (
+	// PublicNetworkhistoryArchiveURLs is a list of history archive URLs for stellar 'pubnet'
+	PublicNetworkhistoryArchiveURLs = []string{
+		"https://history.stellar.org/prd/core-live/core_live_001/",
+		"https://history.stellar.org/prd/core-live/core_live_002/",
+		"https://history.stellar.org/prd/core-live/core_live_003/",
+	}
+
+	// TestNetworkhistoryArchiveURLs is a list of history archive URLs for stellar 'testnet'
+	TestNetworkhistoryArchiveURLs = []string{
+		"https://history.stellar.org/prd/core-testnet/core_testnet_001/",
+		"https://history.stellar.org/prd/core-testnet/core_testnet_002/",
+		"https://history.stellar.org/prd/core-testnet/core_testnet_003",
+	}
+
+	// FutureNetworkhistoryArchiveURLs is a list of history archive URLs for stellar 'futurenet'
+	FutureNetworkhistoryArchiveURLs = []string{
+		"http://history.stellar.org/dev/core-futurenet/core_futurenet_001/",
+		"http://history.stellar.org/dev/core-futurenet/core_futurenet_002/",
+		"http://history.stellar.org/dev/core-futurenet/core_futurenet_003/",
+	}
 )
 
 // ID returns the network ID derived from the provided passphrase.  This value
@@ -79,13 +103,14 @@ func HashTransactionV0(tx xdr.TransactionV0, passphrase string) ([32]byte, error
 	if err != nil {
 		return [32]byte{}, err
 	}
+
 	v1Tx := xdr.Transaction{
 		SourceAccount: sa,
 		Fee:           tx.Fee,
 		Memo:          tx.Memo,
 		Operations:    tx.Operations,
 		SeqNum:        tx.SeqNum,
-		TimeBounds:    tx.TimeBounds,
+		Cond:          xdr.NewPreconditionsWithTimeBounds(tx.TimeBounds),
 	}
 	return HashTransaction(v1Tx, passphrase)
 }

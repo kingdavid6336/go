@@ -7,7 +7,7 @@ import (
 	"sort"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/stellar/go/support/errors"
+	"github.com/stellar/go-stellar-sdk/support/errors"
 )
 
 // BatchInsertBuilder works like sq.InsertBuilder but has a better support for batching
@@ -70,7 +70,7 @@ func (b *BatchInsertBuilder) Row(ctx context.Context, row map[string]interface{}
 
 func (b *BatchInsertBuilder) RowStruct(ctx context.Context, row interface{}) error {
 	if b.columns == nil {
-		b.columns = columnsForStruct(row)
+		b.columns = ColumnsForStruct(row)
 		b.rows = make([][]interface{}, 0)
 	}
 
@@ -118,7 +118,7 @@ func (b *BatchInsertBuilder) Exec(ctx context.Context) error {
 		sql = sql.Values(row...)
 		paramsCount += len(row)
 
-		if paramsCount > postgresQueryMaxParams-2*len(b.columns) {
+		if paramsCount > PostgresQueryMaxParams-2*len(b.columns) {
 			_, err := b.Table.Session.Exec(ctx, sql)
 			if err != nil {
 				return errors.Wrap(err, fmt.Sprintf("error adding values while inserting to %s", b.Table.Name))

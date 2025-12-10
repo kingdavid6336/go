@@ -22,7 +22,7 @@ func TestPaymentValidateDestination(t *testing.T) {
 			IncrementSequenceNum: false,
 			Operations:           []Operation{&payment},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	if assert.Error(t, err) {
@@ -47,7 +47,7 @@ func TestPaymentValidateAmount(t *testing.T) {
 			IncrementSequenceNum: false,
 			Operations:           []Operation{&payment},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	if assert.Error(t, err) {
@@ -72,7 +72,7 @@ func TestPaymentValidateAsset(t *testing.T) {
 			IncrementSequenceNum: false,
 			Operations:           []Operation{&payment},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	if assert.Error(t, err) {
@@ -88,7 +88,7 @@ func TestPaymentRoundtrip(t *testing.T) {
 		Amount:        "10.0000000",
 		Asset:         NativeAsset{},
 	}
-	testOperationsMarshallingRoundtrip(t, []Operation{&payment}, false)
+	testOperationsMarshalingRoundtrip(t, []Operation{&payment}, false)
 
 	// with muxed accounts
 	payment = Payment{
@@ -97,5 +97,5 @@ func TestPaymentRoundtrip(t *testing.T) {
 		Amount:        "10.0000000",
 		Asset:         NativeAsset{},
 	}
-	testOperationsMarshallingRoundtrip(t, []Operation{&payment}, true)
+	testOperationsMarshalingRoundtrip(t, []Operation{&payment}, true)
 }

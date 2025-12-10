@@ -27,7 +27,7 @@ func TestPathPaymentStrictSendValidateSendAsset(t *testing.T) {
 			IncrementSequenceNum: false,
 			Operations:           []Operation{&pathPayment},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	if assert.Error(t, err) {
@@ -57,7 +57,7 @@ func TestPathPaymentStrictSendValidateDestAsset(t *testing.T) {
 			IncrementSequenceNum: false,
 			Operations:           []Operation{&pathPayment},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	if assert.Error(t, err) {
@@ -87,7 +87,7 @@ func TestPathPaymentStrictSendValidateDestination(t *testing.T) {
 			IncrementSequenceNum: false,
 			Operations:           []Operation{&pathPayment},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	if assert.Error(t, err) {
@@ -117,7 +117,7 @@ func TestPathPaymentStrictSendValidateSendMax(t *testing.T) {
 			IncrementSequenceNum: false,
 			Operations:           []Operation{&pathPayment},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 
@@ -148,7 +148,7 @@ func TestPathPaymentStrictSendValidateDestAmount(t *testing.T) {
 			IncrementSequenceNum: false,
 			Operations:           []Operation{&pathPayment},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	if assert.Error(t, err) {
@@ -167,7 +167,7 @@ func TestPathPaymentStrictSendRoundtrip(t *testing.T) {
 		DestMin:       "1.0000000",
 		Path:          []Asset{CreditAsset{"ABCD", "GB7BDSZU2Y27LYNLALKKALB52WS2IZWYBDGY6EQBLEED3TJOCVMZRH7H"}},
 	}
-	testOperationsMarshallingRoundtrip(t, []Operation{&pathPaymentStrictSend}, false)
+	testOperationsMarshalingRoundtrip(t, []Operation{&pathPaymentStrictSend}, false)
 
 	// with muxed accounts
 	pathPaymentStrictSend = PathPaymentStrictSend{
@@ -179,5 +179,5 @@ func TestPathPaymentStrictSendRoundtrip(t *testing.T) {
 		DestMin:       "1.0000000",
 		Path:          []Asset{CreditAsset{"ABCD", "GB7BDSZU2Y27LYNLALKKALB52WS2IZWYBDGY6EQBLEED3TJOCVMZRH7H"}},
 	}
-	testOperationsMarshallingRoundtrip(t, []Operation{&pathPaymentStrictSend}, true)
+	testOperationsMarshalingRoundtrip(t, []Operation{&pathPaymentStrictSend}, true)
 }

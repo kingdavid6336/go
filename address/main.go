@@ -1,5 +1,5 @@
 // Package address provides utility functions for working with stellar
-// addresses. See https://www.stellar.org/developers/guides/concepts/federation.
+// addresses. See https://developers.stellar.org/docs/glossary/federation/
 // html#stellar-addresses for more on addresses.
 package address
 
@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/asaskevich/govalidator"
-	"github.com/stellar/go/support/errors"
+	"github.com/stellar/go-stellar-sdk/support/errors"
 )
 
 // Separator seperates the name and domain portions of an address

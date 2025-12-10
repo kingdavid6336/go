@@ -2,8 +2,11 @@
 /vendor
 /dist
 /local-archive
-/.vscode/*.sql
-/.vscode/settings.json
+/services/horizon/captive-core
+/services/horizon/horizon
+/services/horizon/stellar-horizon
+**bucket-cache/
+.vscode
 .idea
 debug
 .bundle
@@ -11,3 +14,11 @@ debug
 *.crt
 *.csr
 *.key
+*.prof
+*.test
+*.index
+*.xdr
+*.db
+*.conf
+*.lock
+.proto_checksums

@@ -3,7 +3,7 @@ package txnbuild
 import (
 	"testing"
 
-	"github.com/stellar/go/xdr"
+	"github.com/stellar/go-stellar-sdk/xdr"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -131,7 +131,7 @@ func TestEmptyHomeDomainOK(t *testing.T) {
 	options := SetOptions{
 		HomeDomain: NewHomeDomain(""),
 	}
-	options.BuildXDR(false)
+	options.BuildXDR()
 
 	assert.Equal(t, string(*options.xdrOp.HomeDomain), "", "empty string home domain is set")
 

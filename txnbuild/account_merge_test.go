@@ -18,12 +18,12 @@ func TestAccountMergeValidate(t *testing.T) {
 		TransactionParams{
 			SourceAccount: &sourceAccount,
 			Operations:    []Operation{&accountMerge},
-			Timebounds:    NewInfiniteTimeout(),
+			Preconditions: Preconditions{TimeBounds: NewInfiniteTimeout()},
 			BaseFee:       MinBaseFee,
 		},
 	)
 	if assert.Error(t, err) {
-		expected := "invalid address"
+		expected := "invalid address length"
 		assert.Contains(t, err.Error(), expected)
 	}
 }
@@ -33,11 +33,11 @@ func TestAccountMergeRoundtrip(t *testing.T) {
 		SourceAccount: "GB7BDSZU2Y27LYNLALKKALB52WS2IZWYBDGY6EQBLEED3TJOCVMZRH7H",
 		Destination:   "GB7BDSZU2Y27LYNLALKKALB52WS2IZWYBDGY6EQBLEED3TJOCVMZRH7H",
 	}
-	testOperationsMarshallingRoundtrip(t, []Operation{&accountMerge}, false)
+	testOperationsMarshalingRoundtrip(t, []Operation{&accountMerge}, false)
 
 	accountMerge = AccountMerge{
 		SourceAccount: "MA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVAAAAAAAAAAAAAJLK",
 		Destination:   "GB7BDSZU2Y27LYNLALKKALB52WS2IZWYBDGY6EQBLEED3TJOCVMZRH7H",
 	}
-	testOperationsMarshallingRoundtrip(t, []Operation{&accountMerge}, true)
+	testOperationsMarshalingRoundtrip(t, []Operation{&accountMerge}, true)
 }

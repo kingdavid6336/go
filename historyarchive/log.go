@@ -5,10 +5,11 @@
 package historyarchive
 
 import (
-	"github.com/stellar/go/xdr"
 	"io"
-	"log"
 	"time"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
 func (has *HistoryArchiveState) GetChangedBuckets(arch *Archive, prevHas *HistoryArchiveState) (string, int, int64) {
@@ -96,7 +97,6 @@ func (arch *Archive) Log(opts *CommandOptions) error {
 	}
 	opts.Range = opts.Range.clamp(state.Range(), arch.checkpointManager)
 
-	log.SetFlags(0)
 	log.Printf("Log of checkpoint files in range: %s", opts.Range)
 	log.Printf("\n")
 	log.Printf("%10s | %10s | %20s | %5s | %s",

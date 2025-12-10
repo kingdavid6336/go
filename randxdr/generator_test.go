@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/stellar/go/gxdr"
-	"github.com/stellar/go/xdr"
+	"github.com/stellar/go-stellar-sdk/gxdr"
+	"github.com/stellar/go-stellar-sdk/xdr"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -20,6 +20,7 @@ func TestRandLedgerCloseMeta(t *testing.T) {
 			shape,
 			[]Preset{
 				{IsNestedInnerSet, SetVecLen(0)},
+				{IsDeepAuthorizedInvocationTree, SetVecLen(0)},
 			},
 		)
 		// check that the goxdr representation matches the go-xdr representation
@@ -30,4 +31,28 @@ func TestRandLedgerCloseMeta(t *testing.T) {
 
 		assert.True(t, bytes.Equal(gxdr.Dump(shape), lcmBytes))
 	}
+}
+
+func TestGeneratorIsDeterministic(t *testing.T) {
+	gen := NewGenerator()
+	shape := &gxdr.LedgerCloseMeta{}
+	gen.Next(
+		shape,
+		[]Preset{
+			{IsNestedInnerSet, SetVecLen(0)},
+			{IsDeepAuthorizedInvocationTree, SetVecLen(0)},
+		},
+	)
+
+	otherGen := NewGenerator()
+	otherShape := &gxdr.LedgerCloseMeta{}
+	otherGen.Next(
+		otherShape,
+		[]Preset{
+			{IsNestedInnerSet, SetVecLen(0)},
+			{IsDeepAuthorizedInvocationTree, SetVecLen(0)},
+		},
+	)
+
+	assert.True(t, bytes.Equal(gxdr.Dump(shape), gxdr.Dump(otherShape)))
 }

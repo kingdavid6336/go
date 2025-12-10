@@ -3,12 +3,12 @@ package xdr_test
 import (
 	"testing"
 
+	. "github.com/stellar/go-stellar-sdk/xdr"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	. "github.com/stellar/go/xdr"
 )
 
 var _ = Describe("xdr.Asset#Extract()", func() {
@@ -39,7 +39,7 @@ var _ = Describe("xdr.Asset#Extract()", func() {
 	Context("asset is credit_alphanum4", func() {
 		BeforeEach(func() {
 			var err error
-			an := AssetAlphaNum4{}
+			an := AlphaNum4{}
 			err = an.Issuer.SetAddress("GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H")
 			Expect(err).To(BeNil())
 			copy(an.AssetCode[:], []byte("USD"))
@@ -90,7 +90,7 @@ var _ = Describe("xdr.Asset#String()", func() {
 	Context("asset is credit_alphanum4", func() {
 		BeforeEach(func() {
 			var err error
-			an := AssetAlphaNum4{}
+			an := AlphaNum4{}
 			err = an.Issuer.SetAddress("GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H")
 			Expect(err).To(BeNil())
 			copy(an.AssetCode[:], []byte("USD"))
@@ -140,25 +140,25 @@ var _ = Describe("xdr.Asset#Equals()", func() {
 		native, err = NewAsset(AssetTypeAssetTypeNative, nil)
 		Expect(err).To(BeNil())
 
-		usd4_issuer1, err = NewAsset(AssetTypeAssetTypeCreditAlphanum4, AssetAlphaNum4{
+		usd4_issuer1, err = NewAsset(AssetTypeAssetTypeCreditAlphanum4, AlphaNum4{
 			Issuer:    issuer1,
 			AssetCode: usd4,
 		})
 		Expect(err).To(BeNil())
 
-		usd4_issuer2, err = NewAsset(AssetTypeAssetTypeCreditAlphanum4, AssetAlphaNum4{
+		usd4_issuer2, err = NewAsset(AssetTypeAssetTypeCreditAlphanum4, AlphaNum4{
 			Issuer:    issuer2,
 			AssetCode: usd4,
 		})
 		Expect(err).To(BeNil())
 
-		usd12_issuer1, err = NewAsset(AssetTypeAssetTypeCreditAlphanum12, AssetAlphaNum12{
+		usd12_issuer1, err = NewAsset(AssetTypeAssetTypeCreditAlphanum12, AlphaNum12{
 			Issuer:    issuer1,
 			AssetCode: usd12,
 		})
 		Expect(err).To(BeNil())
 
-		eur4_issuer1, err = NewAsset(AssetTypeAssetTypeCreditAlphanum4, AssetAlphaNum4{
+		eur4_issuer1, err = NewAsset(AssetTypeAssetTypeCreditAlphanum4, AlphaNum4{
 			Issuer:    issuer1,
 			AssetCode: eur4,
 		})
@@ -387,5 +387,130 @@ func TestBuildAsset(t *testing.T) {
 				assert.Error(t, err)
 			}
 		})
+	}
+}
+
+func TestAssetLessThan(t *testing.T) {
+	xlm := MustNewNativeAsset()
+
+	t.Run("returns false if assets are equal", func(t *testing.T) {
+		assetA, err := NewCreditAsset(
+			"ARST",
+			"GB7TAYRUZGE6TVT7NHP5SMIZRNQA6PLM423EYISAOAP3MKYIQMVYP2JO",
+		)
+		require.NoError(t, err)
+
+		assetB, err := NewCreditAsset(
+			"USD",
+			"GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGSNFHEYVXM3XOJMDS674JZ",
+		)
+		require.NoError(t, err)
+
+		assert.False(t, xlm.LessThan(xlm))
+		assert.False(t, assetA.LessThan(assetA))
+		assert.False(t, assetB.LessThan(assetB))
+	})
+
+	t.Run("test if asset types are being validated as native < anum4 < anum12", func(t *testing.T) {
+		anum4, err := NewCreditAsset(
+			"ARST",
+			"GB7TAYRUZGE6TVT7NHP5SMIZRNQA6PLM423EYISAOAP3MKYIQMVYP2JO",
+		)
+		require.NoError(t, err)
+		anum12, err := NewCreditAsset(
+			"ARSTANUM12",
+			"GB7TAYRUZGE6TVT7NHP5SMIZRNQA6PLM423EYISAOAP3MKYIQMVYP2JO",
+		)
+		require.NoError(t, err)
+
+		assert.False(t, xlm.LessThan(xlm))
+		assert.True(t, xlm.LessThan(anum4))
+		assert.True(t, xlm.LessThan(anum12))
+
+		assert.False(t, anum4.LessThan(xlm))
+		assert.False(t, anum4.LessThan(anum4))
+		assert.True(t, anum4.LessThan(anum12))
+
+		assert.False(t, anum12.LessThan(xlm))
+		assert.False(t, anum12.LessThan(anum4))
+		assert.False(t, anum12.LessThan(anum12))
+	})
+
+	t.Run("test if asset codes are being validated as assetCodeA < assetCodeB", func(t *testing.T) {
+		assetARST, err := NewCreditAsset(
+			"ARST",
+			"GB7TAYRUZGE6TVT7NHP5SMIZRNQA6PLM423EYISAOAP3MKYIQMVYP2JO",
+		)
+		require.NoError(t, err)
+		assetUSDX, err := NewCreditAsset(
+			"USDX",
+			"GB7TAYRUZGE6TVT7NHP5SMIZRNQA6PLM423EYISAOAP3MKYIQMVYP2JO",
+		)
+		require.NoError(t, err)
+
+		assert.False(t, assetARST.LessThan(assetARST))
+		assert.True(t, assetARST.LessThan(assetUSDX))
+
+		assert.False(t, assetUSDX.LessThan(assetARST))
+		assert.False(t, assetUSDX.LessThan(assetUSDX))
+	})
+
+	t.Run("test if asset issuers are being validated as assetIssuerA < assetIssuerB", func(t *testing.T) {
+		assetIssuerA, err := NewCreditAsset(
+			"ARST",
+			"GB7TAYRUZGE6TVT7NHP5SMIZRNQA6PLM423EYISAOAP3MKYIQMVYP2JO",
+		)
+		require.NoError(t, err)
+		assetIssuerB, err := NewCreditAsset(
+			"ARST",
+			"GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGSNFHEYVXM3XOJMDS674JZ",
+		)
+		require.NoError(t, err)
+
+		assert.True(t, assetIssuerA.LessThan(assetIssuerB))
+		assert.False(t, assetIssuerA.LessThan(assetIssuerA))
+
+		assert.False(t, assetIssuerB.LessThan(assetIssuerA))
+		assert.False(t, assetIssuerB.LessThan(assetIssuerB))
+	})
+
+	t.Run("test if codes with upper-case letters are sorted before lower-case letters", func(t *testing.T) {
+		// All upper-case letters should come before any lower-case ones
+		assetA, err := NewCreditAsset("B", "GA7NLOF4EHWMJF6DBXXV2H6AYI7IHYWNFZR6R52BYBLY7TE5Q74AIDRA")
+		require.NoError(t, err)
+		assetB, err := NewCreditAsset("a", "GA7NLOF4EHWMJF6DBXXV2H6AYI7IHYWNFZR6R52BYBLY7TE5Q74AIDRA")
+		require.NoError(t, err)
+
+		assert.True(t, assetA.LessThan(assetB))
+	})
+}
+
+func BenchmarkAssetString(b *testing.B) {
+	n := MustNewNativeAsset()
+	a, err := NewCreditAsset(
+		"ARST",
+		"GB7TAYRUZGE6TVT7NHP5SMIZRNQA6PLM423EYISAOAP3MKYIQMVYP2JO",
+	)
+	require.NoError(b, err)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = n.String()
+		_ = a.String()
+	}
+}
+
+func BenchmarkAssetStringCanonical(b *testing.B) {
+	n := MustNewNativeAsset()
+	a, err := NewCreditAsset(
+		"ARST",
+		"GB7TAYRUZGE6TVT7NHP5SMIZRNQA6PLM423EYISAOAP3MKYIQMVYP2JO",
+	)
+	require.NoError(b, err)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = n.StringCanonical()
+		_ = a.StringCanonical()
 	}
 }

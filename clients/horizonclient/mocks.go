@@ -3,15 +3,19 @@ package horizonclient
 import (
 	"context"
 
-	hProtocol "github.com/stellar/go/protocols/horizon"
-	"github.com/stellar/go/protocols/horizon/effects"
-	"github.com/stellar/go/protocols/horizon/operations"
-	"github.com/stellar/go/txnbuild"
+	hProtocol "github.com/stellar/go-stellar-sdk/protocols/horizon"
+	"github.com/stellar/go-stellar-sdk/protocols/horizon/effects"
+	"github.com/stellar/go-stellar-sdk/protocols/horizon/operations"
+	"github.com/stellar/go-stellar-sdk/txnbuild"
 	"github.com/stretchr/testify/mock"
 )
 
 // MockClient is a mockable horizon client.
 type MockClient struct {
+	mock.Mock
+}
+
+type MockAdminClient struct {
 	mock.Mock
 }
 
@@ -115,6 +119,36 @@ func (m *MockClient) SubmitFeeBumpTransactionWithOptions(transaction *txnbuild.F
 func (m *MockClient) SubmitTransactionWithOptions(transaction *txnbuild.Transaction, opts SubmitTxOpts) (hProtocol.Transaction, error) {
 	a := m.Called(transaction, opts)
 	return a.Get(0).(hProtocol.Transaction), a.Error(1)
+}
+
+// AsyncSubmitTransactionXDR is a mocking method
+func (m *MockClient) AsyncSubmitTransactionXDR(transactionXdr string) (hProtocol.AsyncTransactionSubmissionResponse, error) {
+	a := m.Called(transactionXdr)
+	return a.Get(0).(hProtocol.AsyncTransactionSubmissionResponse), a.Error(1)
+}
+
+// AsyncSubmitFeeBumpTransaction is a mocking method
+func (m *MockClient) AsyncSubmitFeeBumpTransaction(transaction *txnbuild.FeeBumpTransaction) (hProtocol.AsyncTransactionSubmissionResponse, error) {
+	a := m.Called(transaction)
+	return a.Get(0).(hProtocol.AsyncTransactionSubmissionResponse), a.Error(1)
+}
+
+// AsyncSubmitTransaction is a mocking method
+func (m *MockClient) AsyncSubmitTransaction(transaction *txnbuild.Transaction) (hProtocol.AsyncTransactionSubmissionResponse, error) {
+	a := m.Called(transaction)
+	return a.Get(0).(hProtocol.AsyncTransactionSubmissionResponse), a.Error(1)
+}
+
+// AsyncSubmitFeeBumpTransactionWithOptions is a mocking method
+func (m *MockClient) AsyncSubmitFeeBumpTransactionWithOptions(transaction *txnbuild.FeeBumpTransaction, opts SubmitTxOpts) (hProtocol.AsyncTransactionSubmissionResponse, error) {
+	a := m.Called(transaction, opts)
+	return a.Get(0).(hProtocol.AsyncTransactionSubmissionResponse), a.Error(1)
+}
+
+// AsyncSubmitTransactionWithOptions is a mocking method
+func (m *MockClient) AsyncSubmitTransactionWithOptions(transaction *txnbuild.Transaction, opts SubmitTxOpts) (hProtocol.AsyncTransactionSubmissionResponse, error) {
+	a := m.Called(transaction, opts)
+	return a.Get(0).(hProtocol.AsyncTransactionSubmissionResponse), a.Error(1)
 }
 
 // Transactions is a mocking method
@@ -329,5 +363,48 @@ func (m *MockClient) PrevTradeAggregationsPage(page hProtocol.TradeAggregationsP
 	return a.Get(0).(hProtocol.TradeAggregationsPage), a.Error(1)
 }
 
+func (m *MockClient) LiquidityPoolDetail(request LiquidityPoolRequest) (hProtocol.LiquidityPool, error) {
+	a := m.Called(request)
+	return a.Get(0).(hProtocol.LiquidityPool), a.Error(1)
+}
+
+func (m *MockClient) LiquidityPools(request LiquidityPoolsRequest) (hProtocol.LiquidityPoolsPage, error) {
+	a := m.Called(request)
+	return a.Get(0).(hProtocol.LiquidityPoolsPage), a.Error(1)
+}
+
+func (m *MockClient) NextLiquidityPoolsPage(page hProtocol.LiquidityPoolsPage) (hProtocol.LiquidityPoolsPage, error) {
+	a := m.Called(page)
+	return a.Get(0).(hProtocol.LiquidityPoolsPage), a.Error(1)
+}
+
+func (m *MockClient) PrevLiquidityPoolsPage(page hProtocol.LiquidityPoolsPage) (hProtocol.LiquidityPoolsPage, error) {
+	a := m.Called(page)
+	return a.Get(0).(hProtocol.LiquidityPoolsPage), a.Error(1)
+}
+
+func (m *MockAdminClient) GetIngestionAccountFilter() (hProtocol.AccountFilterConfig, error) {
+	a := m.Called()
+	return a.Get(0).(hProtocol.AccountFilterConfig), a.Error(1)
+}
+
+func (m *MockAdminClient) GetIngestionAssetFilter() (hProtocol.AssetFilterConfig, error) {
+	a := m.Called()
+	return a.Get(0).(hProtocol.AssetFilterConfig), a.Error(1)
+}
+
+func (m *MockAdminClient) SetIngestionAccountFilter(resource hProtocol.AccountFilterConfig) error {
+	a := m.Called(resource)
+	return a.Error(0)
+}
+
+func (m *MockAdminClient) SetIngestionAssetFilter(resource hProtocol.AssetFilterConfig) error {
+	a := m.Called(resource)
+	return a.Error(0)
+}
+
 // ensure that the MockClient implements ClientInterface
 var _ ClientInterface = &MockClient{}
+
+// ensure that the MockClient implements ClientInterface
+var _ AdminClientInterface = &MockAdminClient{}

@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/stellar/go/protocols/horizon/base"
-	"github.com/stellar/go/support/render/hal"
-	"github.com/stellar/go/xdr"
+	"github.com/stellar/go-stellar-sdk/protocols/horizon/base"
+	"github.com/stellar/go-stellar-sdk/support/render/hal"
+	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
-// Peter 30-04-2019: this is copied from the history package "github.com/stellar/go/services/horizon/internal/db2/history"
+// Peter 30-04-2019: this is copied from the history package "github.com/stellar/go-stellar-sdk/services/horizon/internal/db2/history"
 // Could not import this because internal package imports must share the same path prefix as the importer.
 // Maybe this should be housed here and imported into internal packages?
 
@@ -182,10 +182,37 @@ const (
 	// EffectClaimableBalanceClawedBack occurs when a claimable balance is clawed back
 	EffectClaimableBalanceClawedBack EffectType = 80 // from clawback_claimable_balance
 
+	// EffectLiquidityPoolDeposited occurs when a liquidity pool incurs a deposit
+	EffectLiquidityPoolDeposited EffectType = 90 // from liquidity_pool_deposit
+
+	// EffectLiquidityPoolWithdrew occurs when a liquidity pool incurs a withdrawal
+	EffectLiquidityPoolWithdrew EffectType = 91 // from liquidity_pool_withdraw
+
+	// EffectLiquidityPoolTrade occurs when a trade happens in a liquidity pool
+	EffectLiquidityPoolTrade EffectType = 92
+
+	// EffectLiquidityPoolCreated occurs when a liquidity pool is created
+	EffectLiquidityPoolCreated EffectType = 93 // from change_trust
+
+	// EffectLiquidityPoolRemoved occurs when a liquidity pool is removed
+	EffectLiquidityPoolRemoved EffectType = 94 // from change_trust
+
+	// EffectLiquidityPoolRevoked occurs when a liquidity pool is revoked
+	EffectLiquidityPoolRevoked EffectType = 95 // from change_trust_line_flags and allow_trust
+
+	// EffectContractCredited effects occur when a contract receives some
+	// currency from SAC events involving transfers, mints, and burns.
+	// https://github.com/stellar/rs-soroban-env/blob/5695440da452837555d8f7f259cc33341fdf07b0/soroban-env-host/src/native_contract/token/contract.rs#L51-L63
+	EffectContractCredited EffectType = 96
+
+	// EffectContractDebited effects occur when a contract sends some currency
+	// from SAC events involving transfers, mints, and burns.
+	// https://github.com/stellar/rs-soroban-env/blob/5695440da452837555d8f7f259cc33341fdf07b0/soroban-env-host/src/native_contract/token/contract.rs#L51-L63
+	EffectContractDebited EffectType = 97
 )
 
 // Peter 30-04-2019: this is copied from the resourcadapter package
-// "github.com/stellar/go/services/horizon/internal/resourceadapter"
+// "github.com/stellar/go-stellar-sdk/services/horizon/internal/resourceadapter"
 // Could not import this because internal package imports must share the same path prefix as the importer.
 
 // EffectTypeNames stores a map of effect type ID and names
@@ -236,6 +263,14 @@ var EffectTypeNames = map[EffectType]string{
 	EffectSignerSponsorshipUpdated:           "signer_sponsorship_updated",
 	EffectSignerSponsorshipRemoved:           "signer_sponsorship_removed",
 	EffectClaimableBalanceClawedBack:         "claimable_balance_clawed_back",
+	EffectLiquidityPoolDeposited:             "liquidity_pool_deposited",
+	EffectLiquidityPoolWithdrew:              "liquidity_pool_withdrew",
+	EffectLiquidityPoolTrade:                 "liquidity_pool_trade",
+	EffectLiquidityPoolCreated:               "liquidity_pool_created",
+	EffectLiquidityPoolRemoved:               "liquidity_pool_removed",
+	EffectLiquidityPoolRevoked:               "liquidity_pool_revoked",
+	EffectContractCredited:                   "contract_credited",
+	EffectContractDebited:                    "contract_debited",
 }
 
 // Base provides the common structure for any effect resource effect.
@@ -250,7 +285,7 @@ type Base struct {
 	PT              string    `json:"paging_token"`
 	Account         string    `json:"account"`
 	AccountMuxed    string    `json:"account_muxed,omitempty"`
-	AccountMuxedID  uint64    `json:"account_muxed_id,omitempty"`
+	AccountMuxedID  uint64    `json:"account_muxed_id,omitempty,string"`
 	Type            string    `json:"type"`
 	TypeI           int32     `json:"type_i"`
 	LedgerCloseTime time.Time `json:"created_at"`
@@ -276,6 +311,20 @@ type AccountDebited struct {
 	Base
 	base.Asset
 	Amount string `json:"amount"`
+}
+
+type ContractCredited struct {
+	Base
+	base.Asset
+	Contract string `json:"contract"`
+	Amount   string `json:"amount"`
+}
+
+type ContractDebited struct {
+	Base
+	base.Asset
+	Contract string `json:"contract"`
+	Amount   string `json:"amount"`
 }
 
 type AccountThresholdsUpdated struct {
@@ -341,19 +390,19 @@ type SignerUpdated struct {
 
 type TrustlineCreated struct {
 	Base
-	base.Asset
+	base.LiquidityPoolOrAsset
 	Limit string `json:"limit"`
 }
 
 type TrustlineRemoved struct {
 	Base
-	base.Asset
+	base.LiquidityPoolOrAsset
 	Limit string `json:"limit"`
 }
 
 type TrustlineUpdated struct {
 	Base
-	base.Asset
+	base.LiquidityPoolOrAsset
 	Limit string `json:"limit"`
 }
 
@@ -385,7 +434,7 @@ type Trade struct {
 	Base
 	Seller            string `json:"seller"`
 	SellerMuxed       string `json:"seller_muxed,omitempty"`
-	SellerMuxedID     uint64 `json:"seller_muxed_id,omitempty"`
+	SellerMuxedID     uint64 `json:"seller_muxed_id,omitempty,string"`
 	OfferID           int64  `json:"offer_id,string"`
 	SoldAmount        string `json:"sold_amount"`
 	SoldAssetType     string `json:"sold_asset_type"`
@@ -437,21 +486,27 @@ type AccountSponsorshipRemoved struct {
 
 type TrustlineSponsorshipCreated struct {
 	Base
-	Asset   string `json:"asset"`
-	Sponsor string `json:"sponsor"`
+	Type            string `json:"asset_type"`
+	Asset           string `json:"asset,omitempty"`
+	LiquidityPoolID string `json:"liquidity_pool_id,omitempty"`
+	Sponsor         string `json:"sponsor"`
 }
 
 type TrustlineSponsorshipUpdated struct {
 	Base
-	Asset         string `json:"asset"`
-	FormerSponsor string `json:"former_sponsor"`
-	NewSponsor    string `json:"new_sponsor"`
+	Type            string `json:"asset_type"`
+	Asset           string `json:"asset,omitempty"`
+	LiquidityPoolID string `json:"liquidity_pool_id,omitempty"`
+	FormerSponsor   string `json:"former_sponsor"`
+	NewSponsor      string `json:"new_sponsor"`
 }
 
 type TrustlineSponsorshipRemoved struct {
 	Base
-	Asset         string `json:"asset"`
-	FormerSponsor string `json:"former_sponsor"`
+	Type            string `json:"asset_type"`
+	Asset           string `json:"asset,omitempty"`
+	LiquidityPoolID string `json:"liquidity_pool_id,omitempty"`
+	FormerSponsor   string `json:"former_sponsor"`
 }
 
 type DataSponsorshipCreated struct {
@@ -523,6 +578,59 @@ type TrustlineFlagsUpdated struct {
 	Authorized                      *bool  `json:"authorized_flag,omitempty"`
 	AuthorizedToMaintainLiabilities *bool  `json:"authorized_to_maintain_liabilites_flag,omitempty"`
 	ClawbackEnabled                 *bool  `json:"clawback_enabled_flag,omitempty"`
+}
+
+type LiquidityPool struct {
+	ID              string             `json:"id"`
+	FeeBP           uint32             `json:"fee_bp"`
+	Type            string             `json:"type"`
+	TotalTrustlines uint64             `json:"total_trustlines,string"`
+	TotalShares     string             `json:"total_shares"`
+	Reserves        []base.AssetAmount `json:"reserves"`
+}
+
+type LiquidityPoolDeposited struct {
+	Base
+	LiquidityPool     LiquidityPool      `json:"liquidity_pool"`
+	ReservesDeposited []base.AssetAmount `json:"reserves_deposited"`
+	SharesReceived    string             `json:"shares_received"`
+}
+
+type LiquidityPoolWithdrew struct {
+	Base
+	LiquidityPool    LiquidityPool      `json:"liquidity_pool"`
+	ReservesReceived []base.AssetAmount `json:"reserves_received"`
+	SharesRedeemed   string             `json:"shares_redeemed"`
+}
+
+type LiquidityPoolTrade struct {
+	Base
+	LiquidityPool LiquidityPool    `json:"liquidity_pool"`
+	Sold          base.AssetAmount `json:"sold"`
+	Bought        base.AssetAmount `json:"bought"`
+}
+
+type LiquidityPoolCreated struct {
+	Base
+	LiquidityPool LiquidityPool `json:"liquidity_pool"`
+}
+
+type LiquidityPoolRemoved struct {
+	Base
+	LiquidityPoolID string `json:"liquidity_pool_id"`
+}
+
+type LiquidityPoolClaimableAssetAmount struct {
+	Asset              string `json:"asset"`
+	Amount             string `json:"amount"`
+	ClaimableBalanceID string `json:"claimable_balance_id"`
+}
+
+type LiquidityPoolRevoked struct {
+	Base
+	LiquidityPool   LiquidityPool                       `json:"liquidity_pool"`
+	ReservesRevoked []LiquidityPoolClaimableAssetAmount `json:"reserves_revoked"`
+	SharesRevoked   string                              `json:"shares_revoked"`
 }
 
 // Effect contains methods that are implemented by all effect types.
@@ -830,6 +938,54 @@ func UnmarshalEffect(effectType string, dataString []byte) (effects Effect, err 
 		effects = effect
 	case EffectTypeNames[EffectClaimableBalanceClawedBack]:
 		var effect ClaimableBalanceClawedBack
+		if err = json.Unmarshal(dataString, &effect); err != nil {
+			return
+		}
+		effects = effect
+	case EffectTypeNames[EffectLiquidityPoolDeposited]:
+		var effect LiquidityPoolDeposited
+		if err = json.Unmarshal(dataString, &effect); err != nil {
+			return
+		}
+		effects = effect
+	case EffectTypeNames[EffectLiquidityPoolWithdrew]:
+		var effect LiquidityPoolWithdrew
+		if err = json.Unmarshal(dataString, &effect); err != nil {
+			return
+		}
+		effects = effect
+	case EffectTypeNames[EffectLiquidityPoolTrade]:
+		var effect LiquidityPoolTrade
+		if err = json.Unmarshal(dataString, &effect); err != nil {
+			return
+		}
+		effects = effect
+	case EffectTypeNames[EffectLiquidityPoolCreated]:
+		var effect LiquidityPoolCreated
+		if err = json.Unmarshal(dataString, &effect); err != nil {
+			return
+		}
+		effects = effect
+	case EffectTypeNames[EffectLiquidityPoolRemoved]:
+		var effect LiquidityPoolRemoved
+		if err = json.Unmarshal(dataString, &effect); err != nil {
+			return
+		}
+		effects = effect
+	case EffectTypeNames[EffectLiquidityPoolRevoked]:
+		var effect LiquidityPoolRevoked
+		if err = json.Unmarshal(dataString, &effect); err != nil {
+			return
+		}
+		effects = effect
+	case EffectTypeNames[EffectContractCredited]:
+		var effect ContractCredited
+		if err = json.Unmarshal(dataString, &effect); err != nil {
+			return
+		}
+		effects = effect
+	case EffectTypeNames[EffectContractDebited]:
+		var effect ContractDebited
 		if err = json.Unmarshal(dataString, &effect); err != nil {
 			return
 		}

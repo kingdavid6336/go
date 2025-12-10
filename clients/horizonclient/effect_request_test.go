@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/stellar/go/protocols/horizon/effects"
-	"github.com/stellar/go/support/http/httptest"
+	"github.com/stellar/go-stellar-sdk/protocols/horizon/effects"
+	"github.com/stellar/go-stellar-sdk/support/http/httptest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -31,6 +31,13 @@ func TestEffectRequestBuildUrl(t *testing.T) {
 	// It should return valid ledger effects endpoint and no errors
 	require.NoError(t, err)
 	assert.Equal(t, "ledgers/123/effects", endpoint)
+
+	er = EffectRequest{ForLiquidityPool: "123"}
+	endpoint, err = er.BuildURL()
+
+	// It should return valid liquidity pool effects endpoint and no errors
+	require.NoError(t, err)
+	assert.Equal(t, "liquidity_pools/123/effects", endpoint)
 
 	er = EffectRequest{ForOperation: "123"}
 	endpoint, err = er.BuildURL()

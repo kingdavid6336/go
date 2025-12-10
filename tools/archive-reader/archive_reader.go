@@ -3,18 +3,18 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"io"
 	"log"
 
-	"github.com/stellar/go/historyarchive"
-	"github.com/stellar/go/ingest"
+	"github.com/stellar/go-stellar-sdk/historyarchive"
+	"github.com/stellar/go-stellar-sdk/ingest"
+	"github.com/stellar/go-stellar-sdk/support/storage"
 )
 
 func main() {
 	ledgerPtr := flag.Uint64("ledger", 0, "`ledger to analyze` (tip: has to be of the form `ledger = 64*n - 1`, where n is > 0)")
 	flag.Parse()
-	var seqNum uint32 = uint32(*ledgerPtr)
+	seqNum := uint32(*ledgerPtr)
 
 	if seqNum == 0 {
 		flag.Usage()
@@ -63,10 +63,13 @@ func main() {
 
 func archive() (*historyarchive.Archive, error) {
 	return historyarchive.Connect(
-		fmt.Sprintf("s3://history.stellar.org/prd/core-live/core_live_001/"),
-		historyarchive.ConnectOptions{
-			S3Region:         "eu-west-1",
-			UnsignedRequests: true,
+		"s3://history.stellar.org/prd/core-live/core_live_001/",
+		historyarchive.ArchiveOptions{
+			ConnectOptions: storage.ConnectOptions{
+				S3Region:         "eu-west-1",
+				UserAgent:        "archive-reader",
+				UnsignedRequests: true,
+			},
 		},
 	)
 }

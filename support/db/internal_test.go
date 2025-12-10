@@ -7,6 +7,7 @@ const testSchema = `
 CREATE TABLE  IF NOT EXISTS people (
     name character varying NOT NULL,
     hunger_level integer NOT NULL,
+    json_value jsonb,
     PRIMARY KEY (name)
 );
 DELETE FROM people;
@@ -78,7 +79,7 @@ func TestColumnsForStruct(t *testing.T) {
 	}
 
 	for _, kase := range cases {
-		actual := columnsForStruct(kase.Struct)
+		actual := ColumnsForStruct(kase.Struct)
 
 		assert.Equal(t, kase.Expected, actual, "case '%s' failed", kase.Name)
 	}

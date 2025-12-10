@@ -3,7 +3,7 @@ package txnbuild
 import (
 	"testing"
 
-	"github.com/stellar/go/xdr"
+	"github.com/stellar/go-stellar-sdk/xdr"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -22,7 +22,7 @@ func TestManageDataValidateName(t *testing.T) {
 			IncrementSequenceNum: false,
 			Operations:           []Operation{&manageData},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	if assert.Error(t, err) {
@@ -46,7 +46,7 @@ func TestManageDataValidateValue(t *testing.T) {
 			IncrementSequenceNum: false,
 			Operations:           []Operation{&manageData},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	if assert.Error(t, err) {
@@ -88,7 +88,7 @@ func TestManageDataRoundTrip(t *testing.T) {
 					IncrementSequenceNum: false,
 					Operations:           []Operation{&manageData},
 					BaseFee:              MinBaseFee,
-					Timebounds:           NewInfiniteTimeout(),
+					Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 				},
 			)
 			assert.NoError(t, err)
@@ -133,7 +133,7 @@ func TestManageDataRoundtrip(t *testing.T) {
 		Name:          "foo",
 		Value:         []byte("bar"),
 	}
-	testOperationsMarshallingRoundtrip(t, []Operation{&manageData}, false)
+	testOperationsMarshalingRoundtrip(t, []Operation{&manageData}, false)
 
 	// with muxed accounts
 	manageData = ManageData{
@@ -141,5 +141,5 @@ func TestManageDataRoundtrip(t *testing.T) {
 		Name:          "foo",
 		Value:         []byte("bar"),
 	}
-	testOperationsMarshallingRoundtrip(t, []Operation{&manageData}, true)
+	testOperationsMarshalingRoundtrip(t, []Operation{&manageData}, true)
 }

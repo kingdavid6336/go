@@ -4,9 +4,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/stellar/go/keypair"
-	"github.com/stellar/go/network"
-	horizonclient "github.com/stellar/go/txnbuild/examplehorizonclient"
+	"github.com/stellar/go-stellar-sdk/price"
+	"github.com/stellar/go-stellar-sdk/xdr"
+
+	"github.com/stellar/go-stellar-sdk/keypair"
+	"github.com/stellar/go-stellar-sdk/network"
+	horizonclient "github.com/stellar/go-stellar-sdk/txnbuild/examplehorizonclient"
 )
 
 func ExampleInflation() {
@@ -24,7 +27,7 @@ func ExampleInflation() {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(), // Use a real timeout in production!
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()}, // Use a real timeout in production!
 		},
 	)
 	check(err)
@@ -57,7 +60,7 @@ func ExampleCreateAccount() {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(), // Use a real timeout in production!
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()}, // Use a real timeout in production!
 		},
 	)
 	check(err)
@@ -91,7 +94,7 @@ func ExamplePayment() {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(), // Use a real timeout in production!
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()}, // Use a real timeout in production!
 		},
 	)
 	check(err)
@@ -135,7 +138,7 @@ func ExamplePayment_setBaseFee() {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op1, &op2},
 			BaseFee:              feeStats.MaxFee.P50,
-			Timebounds:           NewInfiniteTimeout(), // Use a real timeout in production!
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()}, // Use a real timeout in production!
 		},
 	)
 	check(err)
@@ -167,7 +170,7 @@ func ExampleBumpSequence() {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(), // Use a real timeout in production!
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()}, // Use a real timeout in production!
 		},
 	)
 	check(err)
@@ -199,7 +202,7 @@ func ExampleAccountMerge() {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(), // Use a real timeout in production!
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()}, // Use a real timeout in production!
 		},
 	)
 	check(err)
@@ -232,7 +235,7 @@ func ExampleManageData() {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(), // Use a real timeout in production!
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()}, // Use a real timeout in production!
 		},
 	)
 	check(err)
@@ -264,7 +267,7 @@ func ExampleManageData_removeDataEntry() {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(), // Use a real timeout in production!
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()}, // Use a real timeout in production!
 		},
 	)
 	check(err)
@@ -304,7 +307,7 @@ func ExampleSetOptions() {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(), // Use a real timeout in production!
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()}, // Use a real timeout in production!
 		},
 	)
 	check(err)
@@ -326,8 +329,11 @@ func ExampleChangeTrust() {
 	sourceAccount, err := client.AccountDetail(ar)
 	check(err)
 
+	asset, err := CreditAsset{"ABCD", "GCCOBXW2XQNUSL467IEILE6MMCNRR66SSVL4YQADUNYYNUVREF3FIV2Z"}.ToChangeTrustAsset()
+	check(err)
+
 	op := ChangeTrust{
-		Line:  CreditAsset{"ABCD", "GCCOBXW2XQNUSL467IEILE6MMCNRR66SSVL4YQADUNYYNUVREF3FIV2Z"},
+		Line:  asset,
 		Limit: "10",
 	}
 
@@ -337,7 +343,7 @@ func ExampleChangeTrust() {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(), // Use a real timeout in production!
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()}, // Use a real timeout in production!
 		},
 	)
 	check(err)
@@ -359,7 +365,7 @@ func ExampleChangeTrust_removeTrustline() {
 	sourceAccount, err := client.AccountDetail(ar)
 	check(err)
 
-	op := RemoveTrustlineOp(CreditAsset{"ABCD", "GCCOBXW2XQNUSL467IEILE6MMCNRR66SSVL4YQADUNYYNUVREF3FIV2Z"})
+	op := RemoveTrustlineOp(CreditAsset{"ABCD", "GCCOBXW2XQNUSL467IEILE6MMCNRR66SSVL4YQADUNYYNUVREF3FIV2Z"}.MustToChangeTrustAsset())
 
 	tx, err := NewTransaction(
 		TransactionParams{
@@ -367,7 +373,7 @@ func ExampleChangeTrust_removeTrustline() {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(), // Use a real timeout in production!
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()}, // Use a real timeout in production!
 		},
 	)
 	check(err)
@@ -401,7 +407,7 @@ func ExampleAllowTrust() {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(), // Use a real timeout in production!
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()}, // Use a real timeout in production!
 		},
 	)
 	check(err)
@@ -426,8 +432,7 @@ func ExampleManageSellOffer() {
 	selling := NativeAsset{}
 	buying := CreditAsset{"ABCD", "GAS4V4O2B7DW5T7IQRPEEVCRXMDZESKISR7DVIGKZQYYV3OSQ5SH5LVP"}
 	sellAmount := "100"
-	price := "0.01"
-	op, err := CreateOfferOp(selling, buying, sellAmount, price)
+	op, err := CreateOfferOp(selling, buying, sellAmount, price.MustParse("0.01"))
 	check(err)
 
 	tx, err := NewTransaction(
@@ -436,7 +441,7 @@ func ExampleManageSellOffer() {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(), // Use a real timeout in production!
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()}, // Use a real timeout in production!
 		},
 	)
 	check(err)
@@ -468,7 +473,7 @@ func ExampleManageSellOffer_deleteOffer() {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(), // Use a real timeout in production!
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()}, // Use a real timeout in production!
 		},
 	)
 	check(err)
@@ -493,9 +498,8 @@ func ExampleManageSellOffer_updateOffer() {
 	selling := NativeAsset{}
 	buying := CreditAsset{"ABCD", "GAS4V4O2B7DW5T7IQRPEEVCRXMDZESKISR7DVIGKZQYYV3OSQ5SH5LVP"}
 	sellAmount := "50"
-	price := "0.02"
 	offerID := int64(2497628)
-	op, err := UpdateOfferOp(selling, buying, sellAmount, price, offerID)
+	op, err := UpdateOfferOp(selling, buying, sellAmount, price.MustParse("0.02"), offerID)
 	check(err)
 
 	tx, err := NewTransaction(
@@ -504,7 +508,7 @@ func ExampleManageSellOffer_updateOffer() {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(), // Use a real timeout in production!
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()}, // Use a real timeout in production!
 		},
 	)
 	check(err)
@@ -530,7 +534,7 @@ func ExampleCreatePassiveSellOffer() {
 		Selling: NativeAsset{},
 		Buying:  CreditAsset{"ABCD", "GAS4V4O2B7DW5T7IQRPEEVCRXMDZESKISR7DVIGKZQYYV3OSQ5SH5LVP"},
 		Amount:  "10",
-		Price:   "1.0",
+		Price:   xdr.Price{1, 1},
 	}
 
 	tx, err := NewTransaction(
@@ -539,7 +543,7 @@ func ExampleCreatePassiveSellOffer() {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(), // Use a real timeout in production!
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()}, // Use a real timeout in production!
 		},
 	)
 	check(err)
@@ -577,7 +581,7 @@ func ExamplePathPayment() {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(), // Use a real timeout in production!
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()}, // Use a real timeout in production!
 		},
 	)
 	check(err)
@@ -615,7 +619,7 @@ func ExamplePathPaymentStrictReceive() {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(), // Use a real timeout in production!
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()}, // Use a real timeout in production!
 		},
 	)
 	check(err)
@@ -653,7 +657,7 @@ func ExamplePathPaymentStrictSend() {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(), // Use a real timeout in production!
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()}, // Use a real timeout in production!
 		},
 	)
 	check(err)
@@ -679,7 +683,7 @@ func ExampleManageBuyOffer() {
 		Selling: NativeAsset{},
 		Buying:  CreditAsset{"ABCD", "GDQNY3PBOJOKYZSRMK2S7LHHGWZIUISD4QORETLMXEWXBI7KFZZMKTL3"},
 		Amount:  "100",
-		Price:   "0.01",
+		Price:   price.MustParse("0.01"),
 		OfferID: 0,
 	}
 
@@ -689,7 +693,7 @@ func ExampleManageBuyOffer() {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&buyOffer},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(), // Use a real timeout in production!
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()}, // Use a real timeout in production!
 		},
 	)
 	check(err)
@@ -722,7 +726,7 @@ func ExampleFeeBumpTransaction() {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&op},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(), // Use a real timeout in production!
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()}, // Use a real timeout in production!
 		},
 	)
 	check(err)
@@ -756,7 +760,7 @@ func ExampleBuildChallengeTx() {
 	webAuthDomain := "webauthdomain.example.org"
 	timebound := time.Duration(5 * time.Minute)
 
-	tx, err := BuildChallengeTx(serverSignerSeed, clientAccountID, webAuthDomain, anchorName, network.TestNetworkPassphrase, timebound)
+	tx, err := BuildChallengeTx(serverSignerSeed, clientAccountID, webAuthDomain, anchorName, network.TestNetworkPassphrase, timebound, nil)
 	check(err)
 
 	txeBase64, err := tx.Base64()
@@ -796,7 +800,7 @@ func ExampleCreateClaimableBalance() {
 			SourceAccount:        &aAccount,
 			IncrementSequenceNum: true,
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 			Operations:           []Operation{&claimableBalanceEntry},
 		},
 	)
@@ -824,7 +828,7 @@ func ExampleClaimClaimableBalance() {
 			SourceAccount:        &aAccount, // or Account B, depending on the condition!
 			IncrementSequenceNum: true,
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 			Operations:           []Operation{&claimBalance},
 		},
 		network.TestNetworkPassphrase,
@@ -869,13 +873,16 @@ func InitSponsorshipTestConfig() SponsorshipTestConfig {
 func ExampleBeginSponsoringFutureReserves() {
 	test := InitSponsorshipTestConfig()
 
+	asset, err := test.Assets[0].ToChangeTrustAsset()
+	check(err)
+
 	// If the sponsoree submits the transaction, the `SourceAccount` fields can
 	// be omitted for the "sponsor sandwich" operations.
 	sponsorTrustline := []Operation{
 		&BeginSponsoringFutureReserves{SponsoredID: test.A.Address()},
 		&ChangeTrust{
 			SourceAccount: test.Aaccount.AccountID,
-			Line:          &test.Assets[0],
+			Line:          asset,
 			Limit:         MaxTrustlineLimit,
 		},
 		&EndSponsoringFutureReserves{},
@@ -887,7 +894,7 @@ func ExampleBeginSponsoringFutureReserves() {
 		TransactionParams{
 			SourceAccount:        &test.Aaccount,
 			Operations:           sponsorTrustline,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 			BaseFee:              MinBaseFee,
 			IncrementSequenceNum: true,
 		},
@@ -904,6 +911,9 @@ func ExampleBeginSponsoringFutureReserves() {
 func ExampleBeginSponsoringFutureReserves_transfer() {
 	test := InitSponsorshipTestConfig()
 
+	asset, err := test.Assets[1].ToTrustLineAsset()
+	check(err)
+
 	transferOps := []Operation{
 		&BeginSponsoringFutureReserves{
 			SourceAccount: test.S2account.AccountID,
@@ -914,7 +924,7 @@ func ExampleBeginSponsoringFutureReserves_transfer() {
 			Account:         &test.Aaccount.AccountID,
 			TrustLine: &TrustLineID{
 				Account: test.A.Address(),
-				Asset:   test.Assets[1],
+				Asset:   asset,
 			},
 		},
 		&EndSponsoringFutureReserves{},
@@ -925,7 +935,7 @@ func ExampleBeginSponsoringFutureReserves_transfer() {
 		TransactionParams{
 			SourceAccount:        &test.S1account,
 			Operations:           transferOps,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 			BaseFee:              MinBaseFee,
 			IncrementSequenceNum: true,
 		},
@@ -942,13 +952,19 @@ func ExampleBeginSponsoringFutureReserves_transfer() {
 func ExampleRevokeSponsorship() {
 	test := InitSponsorshipTestConfig()
 
+	asset1, err := test.Assets[1].ToTrustLineAsset()
+	check(err)
+
+	asset2, err := test.Assets[2].ToTrustLineAsset()
+	check(err)
+
 	revokeOps := []Operation{
 		&RevokeSponsorship{
 			SponsorshipType: RevokeSponsorshipTypeTrustLine,
 			Account:         &test.Aaccount.AccountID,
 			TrustLine: &TrustLineID{
 				Account: test.A.Address(),
-				Asset:   test.Assets[1],
+				Asset:   asset1,
 			},
 		},
 		&RevokeSponsorship{
@@ -956,7 +972,7 @@ func ExampleRevokeSponsorship() {
 			Account:         &test.Aaccount.AccountID,
 			TrustLine: &TrustLineID{
 				Account: test.A.Address(),
-				Asset:   test.Assets[2],
+				Asset:   asset2,
 			},
 		},
 	}
@@ -966,7 +982,7 @@ func ExampleRevokeSponsorship() {
 		TransactionParams{
 			SourceAccount:        &test.S2account,
 			Operations:           revokeOps,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 			BaseFee:              MinBaseFee,
 			IncrementSequenceNum: true,
 		},
@@ -977,4 +993,108 @@ func ExampleRevokeSponsorship() {
 	fmt.Println(txb64)
 
 	// Output: AAAAAgAAAADg3G3hclysZlFitS+s5zWyiiJD5B0STWy5LXCj6i5yxQAAAMgAAAAAAAAAAQAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAEgAAAAAAAAABAAAAALQVLw52HjIVKlqx4rWxgwxV1OlUImbKUYmkx5i70s4oAAAAAUVGR0gAAAAAfhHLNNY19eGrAtSgLD3VpaRm2AjNjxIBWQg9zS4VWZgAAAAAAAAAEgAAAAAAAAABAAAAALQVLw52HjIVKlqx4rWxgwxV1OlUImbKUYmkx5i70s4oAAAAAUlKS0wAAAAA4Nxt4XJcrGZRYrUvrOc1sooiQ+QdEk1suS1wo+oucsUAAAAAAAAAAeoucsUAAABA9YO+xRc5Vb8ueP1U8go7ka+u/gZJd2z075c2pdFxYb+4AvQUQGvg+N4wvtNll43lPwXq5XAz74BfP99wugplDQ==
+}
+
+type LiquidityPoolTestConfig struct {
+	A        *keypair.Full
+	AAccount SimpleAccount
+	Assets   []CreditAsset
+}
+
+func InitLiquidityPoolTestConfig() LiquidityPoolTestConfig {
+	A := keypair.MustParseFull("SCZANGBA5YHTNYVVV4C3U252E2B6P6F5T3U6MM63WBSBZATAQI3EBTQ4")
+
+	return LiquidityPoolTestConfig{
+		A:        A,
+		AAccount: SimpleAccount{AccountID: A.Address()},
+		Assets: []CreditAsset{
+			{Code: "ABCD", Issuer: A.Address()},
+			{Code: "EFGH", Issuer: A.Address()},
+			{Code: "IJKL", Issuer: A.Address()},
+		},
+	}
+}
+
+func ExampleLiquidityPoolDeposit() {
+	test := InitLiquidityPoolTestConfig()
+
+	poolId, err := NewLiquidityPoolId(test.Assets[0], test.Assets[1])
+	check(err)
+
+	depositOps := []Operation{
+		// Change of trust the first time ensures that the pool exists.
+		&ChangeTrust{
+			Line: LiquidityPoolShareChangeTrustAsset{
+				LiquidityPoolParameters: LiquidityPoolParameters{
+					AssetA: test.Assets[0],
+					AssetB: test.Assets[1],
+					Fee:    LiquidityPoolFeeV18,
+				},
+			},
+			SourceAccount: test.AAccount.AccountID,
+			Limit:         MaxTrustlineLimit,
+		},
+
+		// Add our deposit to the pool
+		&LiquidityPoolDeposit{
+			SourceAccount:   test.A.Address(),
+			LiquidityPoolID: poolId,
+			MaxAmountA:      "0.1000000",
+			MaxAmountB:      "0.1000000",
+			MinPrice:        price.MustParse("0.1000000"),
+			MaxPrice:        price.MustParse("0.1000000"),
+		},
+	}
+
+	// With revocation, only the new sponsor needs to sign.
+	txb64, err := newSignedTransaction(
+		TransactionParams{
+			SourceAccount:        &test.AAccount,
+			Operations:           depositOps,
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
+			BaseFee:              MinBaseFee,
+			IncrementSequenceNum: true,
+		},
+		network.TestNetworkPassphrase,
+		test.A,
+	)
+	check(err)
+	fmt.Println(txb64)
+
+	// Output: AAAAAgAAAAC0FS8Odh4yFSpaseK1sYMMVdTpVCJmylGJpMeYu9LOKAAAAMgAAAAAAAAAAQAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAABAAAAALQVLw52HjIVKlqx4rWxgwxV1OlUImbKUYmkx5i70s4oAAAABgAAAAMAAAAAAAAAAUFCQ0QAAAAAtBUvDnYeMhUqWrHitbGDDFXU6VQiZspRiaTHmLvSzigAAAABRUZHSAAAAAC0FS8Odh4yFSpaseK1sYMMVdTpVCJmylGJpMeYu9LOKAAAAB5//////////wAAAAEAAAAAtBUvDnYeMhUqWrHitbGDDFXU6VQiZspRiaTHmLvSzigAAAAWeDFASRchw0mM6/TK0AbZw13MsKye384/nzGgEZhWzzsAAAAAAA9CQAAAAAAAD0JAAAAAAQAAAAoAAAABAAAACgAAAAAAAAABu9LOKAAAAECsEeCUf0w62cgGpgaZxR2cb47Ln3jvfUOvTXl2sJkmEM3CIHIZzkFkMz7RZCRGn70DUjl5TXeow0zxipPL1K0H
+
+}
+
+func ExampleLiquidityPoolWithdraw() {
+	test := InitLiquidityPoolTestConfig()
+
+	poolId, err := NewLiquidityPoolId(test.Assets[0], test.Assets[1])
+	check(err)
+
+	withdrawOps := []Operation{
+		&LiquidityPoolWithdraw{
+			SourceAccount:   test.A.Address(),
+			LiquidityPoolID: poolId,
+			Amount:          "0.1000000",
+			MinAmountA:      "0.1000000",
+			MinAmountB:      "0.1000000",
+		},
+	}
+
+	// With revocation, only the new sponsor needs to sign.
+	txb64, err := newSignedTransaction(
+		TransactionParams{
+			SourceAccount:        &test.AAccount,
+			Operations:           withdrawOps,
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
+			BaseFee:              MinBaseFee,
+			IncrementSequenceNum: true,
+		},
+		network.TestNetworkPassphrase,
+		test.A,
+	)
+	check(err)
+	fmt.Println(txb64)
+
+	// Output: AAAAAgAAAAC0FS8Odh4yFSpaseK1sYMMVdTpVCJmylGJpMeYu9LOKAAAAGQAAAAAAAAAAQAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAABAAAAALQVLw52HjIVKlqx4rWxgwxV1OlUImbKUYmkx5i70s4oAAAAF3gxQEkXIcNJjOv0ytAG2cNdzLCsnt/OP58xoBGYVs87AAAAAAAPQkAAAAAAAA9CQAAAAAAAD0JAAAAAAAAAAAG70s4oAAAAQHc2K5XVrm6+ICFt3xOrJFbXZXV4jhCZ2kruYJnJ/JJatgRZerVjiCp6BI37hcrd9CM3yTnb8McOSNXHmtgEMQM=
 }

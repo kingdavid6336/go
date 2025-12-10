@@ -6,27 +6,31 @@ import (
 )
 
 // EntryType is a helper to get at the entry type for a change.
-func (change *LedgerEntryChange) EntryType() LedgerEntryType {
-	return change.LedgerKey().Type
+func (change *LedgerEntryChange) EntryType() (LedgerEntryType, error) {
+	key, err := change.LedgerKey()
+	return key.Type, err
 }
 
 // LedgerKey returns the key for the ledger entry that was changed
-// in `change`.
-func (change *LedgerEntryChange) LedgerKey() LedgerKey {
+// in `change`. LedgerKey implements `Keyer`
+func (change *LedgerEntryChange) LedgerKey() (LedgerKey, error) {
 	switch change.Type {
 	case LedgerEntryChangeTypeLedgerEntryCreated:
 		change := change.MustCreated()
 		return change.LedgerKey()
 	case LedgerEntryChangeTypeLedgerEntryRemoved:
-		return change.MustRemoved()
+		return change.MustRemoved(), nil
 	case LedgerEntryChangeTypeLedgerEntryUpdated:
 		change := change.MustUpdated()
 		return change.LedgerKey()
 	case LedgerEntryChangeTypeLedgerEntryState:
 		change := change.MustState()
 		return change.LedgerKey()
+	case LedgerEntryChangeTypeLedgerEntryRestored:
+		change := change.MustRestored()
+		return change.LedgerKey()
 	default:
-		panic(fmt.Errorf("Unknown change type: %v", change.Type))
+		return LedgerKey{}, fmt.Errorf("unknown change type: %v", change.Type)
 	}
 }
 
@@ -53,6 +57,8 @@ func (change *LedgerEntryChange) GetLedgerEntry() (LedgerEntry, bool) {
 		return change.GetUpdated()
 	case LedgerEntryChangeTypeLedgerEntryRemoved:
 		return LedgerEntry{}, false
+	case LedgerEntryChangeTypeLedgerEntryRestored:
+		return change.GetRestored()
 	default:
 		return LedgerEntry{}, false
 	}

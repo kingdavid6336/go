@@ -2,22 +2,24 @@ package horizonclient
 
 import (
 	"fmt"
-	"github.com/jarcoal/httpmock"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/stellar/go/keypair"
-	"github.com/stellar/go/network"
-	hProtocol "github.com/stellar/go/protocols/horizon"
-	"github.com/stellar/go/protocols/horizon/effects"
-	"github.com/stellar/go/protocols/horizon/operations"
-	"github.com/stellar/go/support/clock"
-	"github.com/stellar/go/support/clock/clocktest"
-	"github.com/stellar/go/support/errors"
-	"github.com/stellar/go/support/http/httptest"
-	"github.com/stellar/go/txnbuild"
-	"github.com/stellar/go/xdr"
+	"github.com/jarcoal/httpmock"
+
+	"github.com/stellar/go-stellar-sdk/keypair"
+	"github.com/stellar/go-stellar-sdk/network"
+	hProtocol "github.com/stellar/go-stellar-sdk/protocols/horizon"
+	"github.com/stellar/go-stellar-sdk/protocols/horizon/effects"
+	"github.com/stellar/go-stellar-sdk/protocols/horizon/operations"
+	"github.com/stellar/go-stellar-sdk/support/clock"
+	"github.com/stellar/go-stellar-sdk/support/clock/clocktest"
+	"github.com/stellar/go-stellar-sdk/support/errors"
+	"github.com/stellar/go-stellar-sdk/support/http/httptest"
+	"github.com/stellar/go-stellar-sdk/txnbuild"
+	"github.com/stellar/go-stellar-sdk/xdr"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -57,7 +59,7 @@ func TestCheckMemoRequired(t *testing.T) {
 		Asset:       txnbuild.NativeAsset{},
 	}
 
-	asset := txnbuild.CreditAsset{"ABCD", kp.Address()}
+	asset := txnbuild.CreditAsset{Code: "ABCD", Issuer: kp.Address()}
 	pathPaymentStrictSend := txnbuild.PathPaymentStrictSend{
 		SendAsset:   asset,
 		SendAmount:  "10",
@@ -145,7 +147,7 @@ func TestCheckMemoRequired(t *testing.T) {
 					IncrementSequenceNum: true,
 					Operations:           tc.operations,
 					BaseFee:              txnbuild.MinBaseFee,
-					Timebounds:           txnbuild.NewTimebounds(0, 10),
+					Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimebounds(0, 10)},
 				},
 			)
 			tt.NoError(err)
@@ -188,7 +190,7 @@ func TestAccounts(t *testing.T) {
 	accountRequest := AccountsRequest{}
 	_, err := client.Accounts(accountRequest)
 	if tt.Error(err) {
-		tt.Contains(err.Error(), "invalid request: no parameters - Signer or Asset must be provided")
+		tt.Contains(err.Error(), "invalid request: no parameters")
 	}
 
 	accountRequest = AccountsRequest{
@@ -197,7 +199,7 @@ func TestAccounts(t *testing.T) {
 	}
 	_, err = client.Accounts(accountRequest)
 	if tt.Error(err) {
-		tt.Contains(err.Error(), "invalid request: too many parameters - Signer and Asset provided, provide a single filter")
+		tt.Contains(err.Error(), "invalid request: too many parameters")
 	}
 
 	var accounts hProtocol.AccountsPage
@@ -257,6 +259,7 @@ func TestAccounts(t *testing.T) {
 		tt.Equal(ok, false)
 	}
 }
+
 func TestAccountDetail(t *testing.T) {
 	hmock := httptest.NewClient()
 	client := &Client{
@@ -477,8 +480,6 @@ func TestAssetsRequest(t *testing.T) {
 		assert.Equal(t, record.Asset.Code, "ABC")
 		assert.Equal(t, record.Asset.Issuer, "GCLWGQPMKXQSPF776IU33AH4PZNOOWNAWGGKVTBQMIC5IMKUNP3E6NVU")
 		assert.Equal(t, record.PT, "1")
-		assert.Equal(t, record.NumAccounts, int32(3))
-		assert.Equal(t, record.Amount, "105.0000000")
 		assert.Equal(t, record.Flags.AuthRevocable, false)
 		assert.Equal(t, record.Flags.AuthRequired, true)
 		assert.Equal(t, record.Flags.AuthImmutable, false)
@@ -876,7 +877,7 @@ func TestSubmitTransactionRequest(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []txnbuild.Operation{&payment},
 			BaseFee:              txnbuild.MinBaseFee,
-			Timebounds:           txnbuild.NewTimebounds(0, 10),
+			Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimebounds(0, 10)},
 		},
 	)
 	assert.NoError(t, err)
@@ -902,6 +903,25 @@ func TestSubmitTransactionRequest(t *testing.T) {
 
 	_, err = client.SubmitTransaction(tx)
 	assert.NoError(t, err)
+
+	// verify submit parses correctly when result_meta_xdr absent when skip_meta=true
+	hmock.On(
+		"POST",
+		"https://localhost/transactions",
+	).Return(func(request *http.Request) (*http.Response, error) {
+		val := request.FormValue("tx")
+		assert.Equal(t, val, txXdr)
+		return httpmock.NewStringResponse(http.StatusOK, strings.Replace(txDetailResponse, "<result_meta_xdr>", "", 1)), nil
+	})
+
+	hmock.On(
+		"GET",
+		"https://localhost/accounts/GACTJ4ZFCDZMD2UFR4R7MZOWYBCF6HBP65YKCUT37MUQFPJLDLJ3N5D2/data/config.memo_required",
+	).ReturnString(404, notFoundResponse)
+
+	theTx, err := client.SubmitTransaction(tx)
+	assert.NoError(t, err)
+	assert.Empty(t, theTx.ResultMetaXdr)
 
 	// memo required - does not submit transaction
 	hmock.On(
@@ -944,8 +964,7 @@ func TestSubmitTransactionRequestMuxedAccounts(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []txnbuild.Operation{&payment},
 			BaseFee:              txnbuild.MinBaseFee,
-			Timebounds:           txnbuild.NewTimebounds(0, 10),
-			EnableMuxedAccounts:  true,
+			Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimebounds(0, 10)},
 		},
 	)
 	assert.NoError(t, err)
@@ -1005,7 +1024,7 @@ func TestSubmitFeeBumpTransaction(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []txnbuild.Operation{&payment},
 			BaseFee:              txnbuild.MinBaseFee,
-			Timebounds:           txnbuild.NewTimebounds(0, 10),
+			Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimebounds(0, 10)},
 		},
 	)
 	assert.NoError(t, err)
@@ -1074,7 +1093,7 @@ func TestSubmitTransactionWithOptionsRequest(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []txnbuild.Operation{&payment},
 			BaseFee:              txnbuild.MinBaseFee,
-			Timebounds:           txnbuild.NewTimebounds(0, 10),
+			Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimebounds(0, 10)},
 		},
 	)
 	assert.NoError(t, err)
@@ -1167,7 +1186,7 @@ func TestSubmitTransactionWithOptionsRequest(t *testing.T) {
 			Operations:           []txnbuild.Operation{&payment},
 			BaseFee:              txnbuild.MinBaseFee,
 			Memo:                 txnbuild.MemoText("HelloWorld"),
-			Timebounds:           txnbuild.NewTimebounds(0, 10),
+			Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimebounds(0, 10)},
 		},
 	)
 	assert.NoError(t, err)
@@ -1201,7 +1220,7 @@ func TestSubmitFeeBumpTransactionWithOptions(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []txnbuild.Operation{&payment},
 			BaseFee:              txnbuild.MinBaseFee,
-			Timebounds:           txnbuild.NewTimebounds(0, 10),
+			Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimebounds(0, 10)},
 		},
 	)
 	assert.NoError(t, err)
@@ -1292,7 +1311,7 @@ func TestSubmitFeeBumpTransactionWithOptions(t *testing.T) {
 			Operations:           []txnbuild.Operation{&payment},
 			BaseFee:              txnbuild.MinBaseFee,
 			Memo:                 txnbuild.MemoText("HelloWorld"),
-			Timebounds:           txnbuild.NewTimebounds(0, 10),
+			Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimebounds(0, 10)},
 		},
 	)
 	assert.NoError(t, err)
@@ -1387,7 +1406,7 @@ func TestTransactionsRequest(t *testing.T) {
 	hmock.On(
 		"GET",
 		"https://localhost/transactions/5131aed266a639a6eb4802a92fba310454e711ded830ed899745b9e777d7110c",
-	).ReturnString(200, txDetailResponse)
+	).ReturnString(200, strings.Replace(txDetailResponse, "<result_meta_xdr>", "result_meta_xdr: AAAAAQAAAAIAAAADAAavdgAAAAAAAAAAtoYrQZHbnPLAFsF4YB88J5VSg0/piQNHm0SL9l0HW1EAAAAXSHbnnAAGr3UAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAABAAavdgAAAAAAAAAAtoYrQZHbnPLAFsF4YB88J5VSg0/piQNHm0SL9l0HW1EAAAAXSHbnnAAGr3UAAAABAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAABAAAABAAAAAMABq9zAAAAAAAAAADMSEvcRKXsaUNna++Hy7gWm/CfqTjEA7xoGypfrFGUHAAAAAUQ/z+cAABeBgAASuQAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAEABq92AAAAAAAAAADMSEvcRKXsaUNna++Hy7gWm/CfqTjEA7xoGypfrFGUHAAAAAcXjracAABeBgAASuQAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAMABq92AAAAAAAAAAC2hitBkduc8sAWwXhgHzwnlVKDT+mJA0ebRIv2XQdbUQAAABdIduecAAavdQAAAAEAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAEABq92AAAAAAAAAAC2hitBkduc8sAWwXhgHzwnlVKDT+mJA0ebRIv2XQdbUQAAABVB53CcAAavdQAAAAEAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAA==", 1))
 
 	record, err := client.TransactionDetail(txHash)
 	if assert.NoError(t, err) {
@@ -1395,6 +1414,17 @@ func TestTransactionsRequest(t *testing.T) {
 		assert.Equal(t, record.Successful, true)
 		assert.Equal(t, record.Hash, "5131aed266a639a6eb4802a92fba310454e711ded830ed899745b9e777d7110c")
 		assert.Equal(t, record.Memo, "2A1V6J5703G47XHY")
+	}
+
+	// transaction detail when skip meta enabled and result_meta_xdr is absent
+	hmock.On(
+		"GET",
+		"https://localhost/transactions/5131aed266a639a6eb4802a92fba310454e711ded830ed899745b9e777d7110c",
+	).ReturnString(200, strings.Replace(txDetailResponse, "<result_meta_xdr>", "", 1))
+
+	record, err = client.TransactionDetail(txHash)
+	if assert.NoError(t, err) {
+		assert.Empty(t, record.ResultMetaXdr)
 	}
 }
 
@@ -1454,7 +1484,9 @@ func TestFetchTimebounds(t *testing.T) {
 	// When no saved server time, return local time
 	st, err := client.FetchTimebounds(100)
 	if assert.NoError(t, err) {
+		serverTimeMapMutex.Lock()
 		assert.IsType(t, ServerTimeMap["localhost"], ServerTimeRecord{})
+		serverTimeMapMutex.Unlock()
 		assert.Equal(t, st.MinTime, int64(0))
 	}
 
@@ -1471,7 +1503,9 @@ func TestFetchTimebounds(t *testing.T) {
 	// get saved server time
 	st, err = client.FetchTimebounds(100)
 	if assert.NoError(t, err) {
+		serverTimeMapMutex.Lock()
 		assert.IsType(t, ServerTimeMap["localhost"], ServerTimeRecord{})
+		serverTimeMapMutex.Unlock()
 		assert.Equal(t, st.MinTime, int64(0))
 		// serverTime + 100seconds
 		assert.Equal(t, st.MaxTime, int64(1560947196))
@@ -1479,10 +1513,12 @@ func TestFetchTimebounds(t *testing.T) {
 
 	// mock server time
 	newRecord := ServerTimeRecord{ServerTime: 100, LocalTimeRecorded: 1560947096}
+	serverTimeMapMutex.Lock()
 	ServerTimeMap["localhost"] = newRecord
+	serverTimeMapMutex.Unlock()
 	st, err = client.FetchTimebounds(100)
 	assert.NoError(t, err)
-	assert.IsType(t, st, txnbuild.Timebounds{})
+	assert.IsType(t, st, txnbuild.TimeBounds{})
 	assert.Equal(t, st.MinTime, int64(0))
 	// time should be 200, serverTime + 100seconds
 	assert.Equal(t, st.MaxTime, int64(200))
@@ -2323,7 +2359,7 @@ var transactionFailure = `{
   "type": "https://stellar.org/horizon-errors/transaction_failed",
   "title": "Transaction Failed",
   "status": 400,
-  "detail": "The transaction failed when submitted to the stellar network. The extras.result_codes field on this response contains further details.  Descriptions of each code can be found at: https://www.stellar.org/developers/learn/concepts/list-of-operations.html",
+  "detail": "The transaction failed when submitted to the stellar network. The extras.result_codes field on this response contains further details.  Descriptions of each code can be found at: https://developers.stellar.org/docs/start/list-of-operations/",
   "instance": "horizon-testnet-001.prd.stellar001.internal.stellar-ops.com/4elYz2fHhC-528285",
   "extras": {
     "envelope_xdr": "AAAAAKpmDL6Z4hvZmkTBkYpHftan4ogzTaO4XTB7joLgQnYYAAAAZAAAAAAABeoyAAAAAAAAAAEAAAAAAAAAAQAAAAAAAAABAAAAAD3sEVVGZGi/NoC3ta/8f/YZKMzyi9ZJpOi0H47x7IqYAAAAAAAAAAAF9eEAAAAAAAAAAAA=",
@@ -2485,7 +2521,7 @@ var txDetailResponse = `{
   "operation_count": 1,
   "envelope_xdr": "AAAAALaGK0GR25zywBbBeGAfPCeVUoNP6YkDR5tEi/ZdB1tRAAAAZAAGr3UAAAABAAAAAAAAAAEAAAAQMkExVjZKNTcwM0c0N1hIWQAAAAEAAAABAAAAALaGK0GR25zywBbBeGAfPCeVUoNP6YkDR5tEi/ZdB1tRAAAAAQAAAADMSEvcRKXsaUNna++Hy7gWm/CfqTjEA7xoGypfrFGUHAAAAAAAAAACBo93AAAAAAAAAAABXQdbUQAAAECQ5m6ZHsv8/Gd/aRJ2EMLurJMxFynT7KbD51T7gD91Gqp/fzsRHilSGoVSw5ztmtJb2LP7o3bQbiZynQiJPl8C",
   "result_xdr": "AAAAAAAAAGQAAAAAAAAAAQAAAAAAAAABAAAAAAAAAAA=",
-  "result_meta_xdr": "AAAAAQAAAAIAAAADAAavdgAAAAAAAAAAtoYrQZHbnPLAFsF4YB88J5VSg0/piQNHm0SL9l0HW1EAAAAXSHbnnAAGr3UAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAABAAavdgAAAAAAAAAAtoYrQZHbnPLAFsF4YB88J5VSg0/piQNHm0SL9l0HW1EAAAAXSHbnnAAGr3UAAAABAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAABAAAABAAAAAMABq9zAAAAAAAAAADMSEvcRKXsaUNna++Hy7gWm/CfqTjEA7xoGypfrFGUHAAAAAUQ/z+cAABeBgAASuQAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAEABq92AAAAAAAAAADMSEvcRKXsaUNna++Hy7gWm/CfqTjEA7xoGypfrFGUHAAAAAcXjracAABeBgAASuQAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAMABq92AAAAAAAAAAC2hitBkduc8sAWwXhgHzwnlVKDT+mJA0ebRIv2XQdbUQAAABdIduecAAavdQAAAAEAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAEABq92AAAAAAAAAAC2hitBkduc8sAWwXhgHzwnlVKDT+mJA0ebRIv2XQdbUQAAABVB53CcAAavdQAAAAEAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAA==",
+  "result_meta_xdr": "<result_meta_xdr>",
   "fee_meta_xdr": "AAAAAgAAAAMABq91AAAAAAAAAAC2hitBkduc8sAWwXhgHzwnlVKDT+mJA0ebRIv2XQdbUQAAABdIdugAAAavdQAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAEABq92AAAAAAAAAAC2hitBkduc8sAWwXhgHzwnlVKDT+mJA0ebRIv2XQdbUQAAABdIduecAAavdQAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAA==",
   "memo_type": "text",
   "signatures": [

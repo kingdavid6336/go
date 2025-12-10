@@ -3,10 +3,11 @@ package txnbuild
 import (
 	"crypto/sha256"
 	"encoding/base64"
-	"github.com/stellar/go/network"
 	"testing"
 
-	"github.com/stellar/go/xdr"
+	"github.com/stellar/go-stellar-sdk/network"
+
+	"github.com/stellar/go-stellar-sdk/xdr"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -24,7 +25,7 @@ func TestFeeBumpInvalidFeeSource(t *testing.T) {
 			SourceAccount: &sourceAccount,
 			Operations:    []Operation{&Inflation{}},
 			BaseFee:       MinBaseFee,
-			Timebounds:    NewInfiniteTimeout(),
+			Preconditions: Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	assert.NoError(t, err)
@@ -50,7 +51,7 @@ func TestFeeBumpUpgradesV0Transaction(t *testing.T) {
 			Operations:           []Operation{&Inflation{}},
 			BaseFee:              2 * MinBaseFee,
 			Memo:                 MemoText("test-memo"),
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	assert.NoError(t, err)
@@ -104,7 +105,7 @@ func TestFeeBumpInvalidInnerTransactionType(t *testing.T) {
 			Operations:           []Operation{&Inflation{}},
 			BaseFee:              2 * MinBaseFee,
 			Memo:                 MemoText("test-memo"),
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	assert.NoError(t, err)
@@ -142,7 +143,7 @@ func TestFeeBumpAllowsFeeAccountToEqualInnerSourceAccount(t *testing.T) {
 			SourceAccount: &sourceAccount,
 			Operations:    []Operation{&Inflation{}},
 			BaseFee:       MinBaseFee,
-			Timebounds:    NewInfiniteTimeout(),
+			Preconditions: Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	assert.NoError(t, err)
@@ -201,7 +202,7 @@ func TestFeeBumpSignWithKeyString(t *testing.T) {
 			SourceAccount: &sourceAccount,
 			Operations:    []Operation{&Inflation{}},
 			BaseFee:       MinBaseFee,
-			Timebounds:    NewInfiniteTimeout(),
+			Preconditions: Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	assert.NoError(t, err)
@@ -256,7 +257,7 @@ func TestFeeBumpSignHashX(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&payment},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	assert.NoError(t, err)
@@ -299,7 +300,7 @@ func TestFeeBumpAddSignatureBase64(t *testing.T) {
 			IncrementSequenceNum: true,
 			Operations:           []Operation{&createAccount},
 			BaseFee:              MinBaseFee,
-			Timebounds:           NewInfiniteTimeout(),
+			Preconditions:        Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	assert.NoError(t, err)
@@ -334,7 +335,7 @@ func TestFeeBumpAddSignatureBase64(t *testing.T) {
 		base64.StdEncoding.EncodeToString(signatures[0].Signature),
 	)
 	assert.NoError(t, err)
-	otherTx, err = otherTx.AddSignatureBase64(
+	_, err = otherTx.AddSignatureBase64(
 		network.TestNetworkPassphrase,
 		kp2.Address(),
 		base64.StdEncoding.EncodeToString(signatures[1].Signature),
@@ -359,11 +360,10 @@ func TestFeeBumpMuxedAccounts(t *testing.T) {
 	sourceAccount := NewSimpleAccount(mx0.Address(), 1)
 	tx, err := NewTransaction(
 		TransactionParams{
-			SourceAccount:       &sourceAccount,
-			Operations:          []Operation{&Inflation{}},
-			BaseFee:             MinBaseFee,
-			Timebounds:          NewInfiniteTimeout(),
-			EnableMuxedAccounts: true,
+			SourceAccount: &sourceAccount,
+			Operations:    []Operation{&Inflation{}},
+			BaseFee:       MinBaseFee,
+			Preconditions: Preconditions{TimeBounds: NewInfiniteTimeout()},
 		},
 	)
 	assert.NoError(t, err)
@@ -380,25 +380,12 @@ func TestFeeBumpMuxedAccounts(t *testing.T) {
 	}
 	feeBumpTx, err := NewFeeBumpTransaction(
 		FeeBumpTransactionParams{
-			FeeAccount:          mx1.Address(),
-			BaseFee:             2 * MinBaseFee,
-			Inner:               tx,
-			EnableMuxedAccounts: true,
+			FeeAccount: mx1.Address(),
+			BaseFee:    2 * MinBaseFee,
+			Inner:      tx,
 		},
 	)
 	assert.NoError(t, err)
 	assert.Equal(t, mx0.Address(), feeBumpTx.InnerTransaction().sourceAccount.AccountID)
 	assert.Equal(t, mx1.Address(), feeBumpTx.FeeAccount())
-
-	// It fails when not enabling muxed accounts
-	feeBumpTx, err = NewFeeBumpTransaction(
-		FeeBumpTransactionParams{
-			FeeAccount:          mx1.Address(),
-			BaseFee:             2 * MinBaseFee,
-			Inner:               tx,
-			EnableMuxedAccounts: false,
-		},
-	)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid version byte")
 }

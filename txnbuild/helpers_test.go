@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/stellar/go/keypair"
-	"github.com/stellar/go/support/errors"
-	"github.com/stellar/go/xdr"
+	"github.com/stellar/go-stellar-sdk/keypair"
+	"github.com/stellar/go-stellar-sdk/support/errors"
+	"github.com/stellar/go-stellar-sdk/xdr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -109,7 +109,7 @@ func convertToV0(tx *Transaction) {
 			SourceAccountEd25519: *tx.envelope.SourceAccount().Ed25519,
 			Fee:                  xdr.Uint32(tx.envelope.Fee()),
 			SeqNum:               xdr.SequenceNumber(tx.envelope.SeqNum()),
-			TimeBounds:           tx.envelope.V1.Tx.TimeBounds,
+			TimeBounds:           tx.envelope.TimeBounds(),
 			Memo:                 tx.envelope.Memo(),
 			Operations:           tx.envelope.Operations(),
 		},
@@ -207,6 +207,21 @@ func TestValidateAmountInvalidValue(t *testing.T) {
 	require.EqualError(t, err, expectedErrMsg, "should be a valid stellar amount")
 }
 
+func TestValidateSequenceNumber(t *testing.T) {
+	err := validateSequenceNumber(int64(10))
+	assert.NoError(t, err)
+
+	err = validateSequenceNumber(int64(0))
+	assert.NoError(t, err)
+}
+
+func TestValidateSequenceNumberInvalidValue(t *testing.T) {
+	err := validateSequenceNumber(int64(-10))
+	assert.Error(t, err)
+	expectedErrMsg := "sequence number cannot be negative"
+	require.EqualError(t, err, expectedErrMsg, "should be a valid sequence number")
+}
+
 func TestValidateAllowTrustAsset(t *testing.T) {
 	err := validateAssetCode(nil)
 	assert.Error(t, err)
@@ -230,26 +245,26 @@ func TestValidateChangeTrustAsset(t *testing.T) {
 	expectedErrMsg := "asset is undefined"
 	require.EqualError(t, err, expectedErrMsg, "An asset is required")
 
-	err = validateChangeTrustAsset(NativeAsset{})
+	err = validateChangeTrustAsset(NativeAsset{}.MustToChangeTrustAsset())
 	assert.Error(t, err)
 	expectedErrMsg = "native (XLM) asset type is not allowed"
 	require.EqualError(t, err, expectedErrMsg, "A custom asset is required")
 
 	kp0 := newKeypair0()
 	ctAsset0 := CreditAsset{Issuer: kp0.Address()}
-	err = validateChangeTrustAsset(ctAsset0)
+	err = validateChangeTrustAsset(ctAsset0.MustToChangeTrustAsset())
 	assert.Error(t, err)
 	expectedErrMsg = "asset code length must be between 1 and 12 characters"
 	require.EqualError(t, err, expectedErrMsg, "asset code is required")
 
 	ctAsset1 := CreditAsset{Code: "ABCD"}
-	err = validateChangeTrustAsset(ctAsset1)
+	err = validateChangeTrustAsset(ctAsset1.MustToChangeTrustAsset())
 	assert.Error(t, err)
 	expectedErrMsg = "asset issuer: public key is undefined"
 	require.EqualError(t, err, expectedErrMsg, "asset issuer is required")
 
 	ctAsset2 := CreditAsset{Code: "ABCD", Issuer: kp0.Address()}
-	err = validateChangeTrustAsset(ctAsset2)
+	err = validateChangeTrustAsset(ctAsset2.MustToChangeTrustAsset())
 	assert.NoError(t, err)
 }
 
@@ -268,7 +283,7 @@ func TestValidatePassiveOfferInvalidAmount(t *testing.T) {
 	cpo := CreatePassiveSellOffer{
 		Buying:  buying,
 		Selling: selling,
-		Price:   "1",
+		Price:   xdr.Price{1, 1},
 		Amount:  "-1",
 	}
 	err := validatePassiveOffer(cpo.Buying, cpo.Selling, cpo.Amount, cpo.Price)
@@ -284,12 +299,12 @@ func TestValidatePassiveOfferInvalidPrice(t *testing.T) {
 	cpo := CreatePassiveSellOffer{
 		Buying:  buying,
 		Selling: selling,
-		Price:   "-1",
+		Price:   xdr.Price{-1, 1},
 		Amount:  "10",
 	}
 	err := validatePassiveOffer(cpo.Buying, cpo.Selling, cpo.Amount, cpo.Price)
 	assert.Error(t, err)
-	expectedErrMsg := "Field: Price, Error: amount can not be negative"
+	expectedErrMsg := "Field: Price, Error: price cannot be negative: -1/1"
 	require.EqualError(t, err, expectedErrMsg, "valid price is required")
 }
 
@@ -299,7 +314,7 @@ func TestValidatePassiveOfferInvalidAsset(t *testing.T) {
 	cpo := CreatePassiveSellOffer{
 		Buying:  buying,
 		Selling: selling,
-		Price:   "1",
+		Price:   xdr.Price{1, 1},
 		Amount:  "10",
 	}
 	err := validatePassiveOffer(cpo.Buying, cpo.Selling, cpo.Amount, cpo.Price)
@@ -313,7 +328,7 @@ func TestValidatePassiveOfferInvalidAsset(t *testing.T) {
 	cpo1 := CreatePassiveSellOffer{
 		Buying:  buying1,
 		Selling: selling1,
-		Price:   "1",
+		Price:   xdr.Price{1, 1},
 		Amount:  "10",
 	}
 	err = validatePassiveOffer(cpo1.Buying, cpo1.Selling, cpo1.Amount, cpo1.Price)
@@ -329,7 +344,7 @@ func TestValidateOfferManageBuyOffer(t *testing.T) {
 	mbo := ManageBuyOffer{
 		Buying:  buying,
 		Selling: selling,
-		Price:   "1",
+		Price:   xdr.Price{1, 1},
 		Amount:  "10",
 		OfferID: -1,
 	}
@@ -346,7 +361,7 @@ func TestValidateOfferManageSellOffer(t *testing.T) {
 	mso := ManageSellOffer{
 		Buying:  buying,
 		Selling: selling,
-		Price:   "1",
+		Price:   xdr.Price{1, 1},
 		Amount:  "10",
 		OfferID: -1,
 	}

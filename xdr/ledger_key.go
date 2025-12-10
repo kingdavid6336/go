@@ -3,7 +3,6 @@ package xdr
 import (
 	"encoding/base64"
 	"fmt"
-	"strings"
 )
 
 // LedgerKey implements the `Keyer` interface
@@ -34,8 +33,32 @@ func (key *LedgerKey) Equals(other LedgerKey) bool {
 		l := key.MustTrustLine()
 		r := other.MustTrustLine()
 		return l.AccountId.Equals(r.AccountId) && l.Asset.Equals(r.Asset)
+	case LedgerEntryTypeLiquidityPool:
+		l := key.MustLiquidityPool()
+		r := other.MustLiquidityPool()
+		return l.LiquidityPoolId == r.LiquidityPoolId
+	case LedgerEntryTypeConfigSetting:
+		l := key.MustConfigSetting()
+		r := other.MustConfigSetting()
+		return l.ConfigSettingId == r.ConfigSettingId
+	case LedgerEntryTypeContractData:
+		l := key.MustContractData()
+		r := other.MustContractData()
+		return l.Contract.Equals(r.Contract) && l.Key.Equals(r.Key) && l.Durability == r.Durability
+	case LedgerEntryTypeContractCode:
+		l := key.MustContractCode()
+		r := other.MustContractCode()
+		return l.Hash == r.Hash
+	case LedgerEntryTypeClaimableBalance:
+		l := key.MustClaimableBalance()
+		r := other.MustClaimableBalance()
+		return l.BalanceId.MustV0() == r.BalanceId.MustV0()
+	case LedgerEntryTypeTtl:
+		l := key.MustTtl()
+		r := other.MustTtl()
+		return l.KeyHash == r.KeyHash
 	default:
-		panic(fmt.Errorf("Unknown ledger key type: %v", key.Type))
+		panic(fmt.Errorf("unknown ledger key type: %v", key.Type))
 	}
 }
 
@@ -79,7 +102,7 @@ func (key *LedgerKey) SetOffer(account AccountId, id uint64) error {
 
 // SetTrustline mutates `key` such that it represents the identity of the
 // trustline owned by `account` and for `asset`.
-func (key *LedgerKey) SetTrustline(account AccountId, line Asset) error {
+func (key *LedgerKey) SetTrustline(account AccountId, line TrustLineAsset) error {
 	data := LedgerKeyTrustLine{account, line}
 	nkey, err := NewLedgerKey(LedgerEntryTypeTrustline, data)
 	if err != nil {
@@ -103,68 +126,145 @@ func (key *LedgerKey) SetClaimableBalance(balanceID ClaimableBalanceId) error {
 	return nil
 }
 
-// MarshalBinaryCompress marshals LedgerKey to []byte but unlike
-// MarshalBinary() it removes all unnecessary bytes, exploting the fact
-// that XDR is padding data to 4 bytes in union discriminants etc.
-// It's primary use is in ingest/io.StateReader that keep LedgerKeys in
-// memory so this function decrease memory requirements.
+// SetLiquidityPool mutates `key` such that it represents the identity of a
+// liquidity pool.
+func (key *LedgerKey) SetLiquidityPool(poolID PoolId) error {
+	data := LedgerKeyLiquidityPool{poolID}
+	nkey, err := NewLedgerKey(LedgerEntryTypeLiquidityPool, data)
+	if err != nil {
+		return err
+	}
+
+	*key = nkey
+	return nil
+}
+
+// SetContractData mutates `key` such that it represents the identity of a
+// contract data entry.
+func (key *LedgerKey) SetContractData(contract ScAddress,
+	keyVal ScVal,
+	keyDurability ContractDataDurability) error {
+	data := LedgerKeyContractData{
+		Contract:   contract,
+		Key:        keyVal,
+		Durability: keyDurability,
+	}
+	nkey, err := NewLedgerKey(LedgerEntryTypeContractData, data)
+	if err != nil {
+		return err
+	}
+
+	*key = nkey
+	return nil
+}
+
+// SetContractCode mutates `key` such that it represents the identity of a
+// contract code entry.
+func (key *LedgerKey) SetContractCode(contractID Hash) error {
+	data := LedgerKeyContractCode{
+		Hash: contractID,
+	}
+	nkey, err := NewLedgerKey(LedgerEntryTypeContractCode, data)
+	if err != nil {
+		return err
+	}
+
+	*key = nkey
+	return nil
+}
+
+// SetConfigSetting mutates `key` such that it represents the identity of a
+// config setting entry.
+func (key *LedgerKey) SetConfigSetting(configSettingID ConfigSettingId) error {
+	data := LedgerKeyConfigSetting{
+		ConfigSettingId: configSettingID,
+	}
+	nkey, err := NewLedgerKey(LedgerEntryTypeConfigSetting, data)
+	if err != nil {
+		return err
+	}
+
+	*key = nkey
+	return nil
+}
+
+// SetTtl mutates `key` such that it represents the identity of an
+// expiration entry.
+func (key *LedgerKey) SetTtl(keyHash Hash) error {
+	data := LedgerKeyTtl{
+		KeyHash: keyHash,
+	}
+	nkey, err := NewLedgerKey(LedgerEntryTypeTtl, data)
+	if err != nil {
+		return err
+	}
+
+	*key = nkey
+	return nil
+}
+
+// GetLedgerKeyFromData obtains a ledger key from LedgerEntryData
 //
-// Warning, do not use UnmarshalBinary() on data encoded using this method!
-//
-// Optimizations:
-// - Writes a single byte for union discriminants vs 4 bytes.
-// - Removes type and code padding for Asset.
-func (key LedgerKey) MarshalBinaryCompress() ([]byte, error) {
-	m := []byte{byte(key.Type)}
+// deprecated: Use `LedgerEntryData.LedgerKey()`
+func GetLedgerKeyFromData(data LedgerEntryData) (LedgerKey, error) {
+	return data.LedgerKey()
+}
+
+func (e *EncodingBuffer) ledgerKeyCompressEncodeTo(key LedgerKey) error {
+	if err := e.xdrEncoderBuf.WriteByte(byte(key.Type)); err != nil {
+		return err
+	}
 
 	switch key.Type {
 	case LedgerEntryTypeAccount:
-		account, err := key.Account.AccountId.MarshalBinaryCompress()
-		if err != nil {
-			return nil, err
-		}
-		m = append(m, account...)
+		return e.accountIdCompressEncodeTo(key.Account.AccountId)
 	case LedgerEntryTypeTrustline:
-		account, err := key.TrustLine.AccountId.MarshalBinaryCompress()
-		if err != nil {
-			return nil, err
+		if err := e.accountIdCompressEncodeTo(key.TrustLine.AccountId); err != nil {
+			return err
 		}
-		m = append(m, account...)
-		asset, err := key.TrustLine.Asset.MarshalBinaryCompress()
-		if err != nil {
-			return nil, err
-		}
-		m = append(m, asset...)
+		return e.assetTrustlineCompressEncodeTo(key.TrustLine.Asset)
 	case LedgerEntryTypeOffer:
-		seller, err := key.Offer.SellerId.MarshalBinaryCompress()
-		if err != nil {
-			return nil, err
-		}
-		m = append(m, seller...)
-		offer, err := key.Offer.OfferId.MarshalBinary()
-		if err != nil {
-			return nil, err
-		}
-		m = append(m, offer...)
+		// We intentionally don't encode the SellerID since the OfferID is enough
+		// (it's unique to the network)
+		return key.Offer.OfferId.EncodeTo(e.encoder)
 	case LedgerEntryTypeData:
-		account, err := key.Data.AccountId.MarshalBinaryCompress()
-		if err != nil {
-			return nil, err
+		if err := e.accountIdCompressEncodeTo(key.Data.AccountId); err != nil {
+			return err
 		}
-		m = append(m, account...)
-		dataName := []byte(strings.TrimRight(string(key.Data.DataName), "\x00"))
-		m = append(m, dataName...)
+		dataName := trimRightZeros([]byte(key.Data.DataName))
+		_, err := e.xdrEncoderBuf.Write(dataName)
+		return err
 	case LedgerEntryTypeClaimableBalance:
-		cBalance, err := key.ClaimableBalance.BalanceId.MarshalBinaryCompress()
-		if err != nil {
-			return nil, err
+		return e.claimableBalanceCompressEncodeTo(key.ClaimableBalance.BalanceId)
+	case LedgerEntryTypeLiquidityPool:
+		_, err := e.xdrEncoderBuf.Write(key.LiquidityPool.LiquidityPoolId[:])
+		return err
+	case LedgerEntryTypeContractData:
+		// contract
+		if contractBytes, err := key.ContractData.Contract.MarshalBinary(); err != nil {
+			return err
+		} else {
+			if _, err := e.xdrEncoderBuf.Write(contractBytes[:]); err != nil {
+				return err
+			}
 		}
-		m = append(m, cBalance...)
+		// key
+		if err := key.ContractData.Key.EncodeTo(e.encoder); err != nil {
+			return err
+		}
+		// durability
+		return e.xdrEncoderBuf.WriteByte(byte(key.ContractData.Durability))
+	case LedgerEntryTypeContractCode:
+		_, err := e.xdrEncoderBuf.Write(key.ContractCode.Hash[:])
+		return err
+	case LedgerEntryTypeConfigSetting:
+		return key.ConfigSetting.ConfigSettingId.EncodeTo(e.encoder)
+	case LedgerEntryTypeTtl:
+		return key.Ttl.KeyHash.EncodeTo(e.encoder)
 	default:
 		panic("Unknown type")
 	}
 
-	return m, nil
 }
 
 // MarshalBinaryBase64 marshals XDR into a binary form and then encodes it

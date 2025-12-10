@@ -13,11 +13,11 @@ import (
 	"path"
 	"strings"
 
-	"github.com/stellar/go/xdr"
+	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
 func DumpXdrAsJson(args []string) error {
-	var tmp interface{}
+	var tmp xdr.DecoderFrom
 	var rdr io.ReadCloser
 	var err error
 
@@ -35,7 +35,7 @@ func DumpXdrAsJson(args []string) error {
 		}
 
 		base := path.Base(arg)
-		xr := NewXdrStream(rdr)
+		xr := xdr.NewStream(rdr)
 		n := 0
 		for {
 			var lhe xdr.LedgerHeaderHistoryEntry
@@ -58,7 +58,7 @@ func DumpXdrAsJson(args []string) error {
 				return fmt.Errorf("Error: unrecognized XDR file type %s", base)
 			}
 
-			if err = xr.ReadOne(&tmp); err != nil {
+			if err = xr.ReadOne(tmp); err != nil {
 				if err == io.EOF {
 					break
 				} else {

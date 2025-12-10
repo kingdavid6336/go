@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"reflect"
 
-	"github.com/stellar/go/support/errors"
+	"github.com/stellar/go-stellar-sdk/support/errors"
 )
 
 // Exec executes the query that has been previously configured on the
@@ -74,7 +74,7 @@ func (ub *UpdateBuilder) SetStruct(s interface{}, ignored []string) *UpdateBuild
 		ignoredMap[ig] = true
 	}
 
-	cols := columnsForStruct(s)
+	cols := ColumnsForStruct(s)
 	row := reflect.ValueOf(s)
 	rvals := mapper.FieldsByName(row, cols)
 

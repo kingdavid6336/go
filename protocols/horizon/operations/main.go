@@ -5,10 +5,10 @@ import (
 	"errors"
 	"time"
 
-	"github.com/stellar/go/protocols/horizon"
-	"github.com/stellar/go/protocols/horizon/base"
-	"github.com/stellar/go/support/render/hal"
-	"github.com/stellar/go/xdr"
+	"github.com/stellar/go-stellar-sdk/protocols/horizon"
+	"github.com/stellar/go-stellar-sdk/protocols/horizon/base"
+	"github.com/stellar/go-stellar-sdk/support/render/hal"
+	"github.com/stellar/go-stellar-sdk/xdr"
 )
 
 // TypeNames maps from operation type to the string used to represent that type
@@ -36,6 +36,11 @@ var TypeNames = map[xdr.OperationType]string{
 	xdr.OperationTypeClawback:                      "clawback",
 	xdr.OperationTypeClawbackClaimableBalance:      "clawback_claimable_balance",
 	xdr.OperationTypeSetTrustLineFlags:             "set_trust_line_flags",
+	xdr.OperationTypeLiquidityPoolDeposit:          "liquidity_pool_deposit",
+	xdr.OperationTypeLiquidityPoolWithdraw:         "liquidity_pool_withdraw",
+	xdr.OperationTypeInvokeHostFunction:            "invoke_host_function",
+	xdr.OperationTypeExtendFootprintTtl:            "extend_footprint_ttl",
+	xdr.OperationTypeRestoreFootprint:              "restore_footprint",
 }
 
 // Base represents the common attributes of an operation resource
@@ -55,7 +60,7 @@ type Base struct {
 	TransactionSuccessful bool      `json:"transaction_successful"`
 	SourceAccount         string    `json:"source_account"`
 	SourceAccountMuxed    string    `json:"source_account_muxed,omitempty"`
-	SourceAccountMuxedID  uint64    `json:"source_account_muxed_id,omitempty"`
+	SourceAccountMuxedID  uint64    `json:"source_account_muxed_id,omitempty,string"`
 	Type                  string    `json:"type"`
 	TypeI                 int32     `json:"type_i"`
 	LedgerCloseTime       time.Time `json:"created_at"`
@@ -88,7 +93,7 @@ type CreateAccount struct {
 	StartingBalance string `json:"starting_balance"`
 	Funder          string `json:"funder"`
 	FunderMuxed     string `json:"funder_muxed,omitempty"`
-	FunderMuxedID   uint64 `json:"funder_muxed_id,omitempty"`
+	FunderMuxedID   uint64 `json:"funder_muxed_id,omitempty,string"`
 	Account         string `json:"account"`
 }
 
@@ -99,10 +104,10 @@ type Payment struct {
 	base.Asset
 	From        string `json:"from"`
 	FromMuxed   string `json:"from_muxed,omitempty"`
-	FromMuxedID uint64 `json:"from_muxed_id,omitempty"`
+	FromMuxedID uint64 `json:"from_muxed_id,omitempty,string"`
 	To          string `json:"to"`
 	ToMuxed     string `json:"to_muxed,omitempty"`
-	ToMuxedID   uint64 `json:"to_muxed_id,omitempty"`
+	ToMuxedID   uint64 `json:"to_muxed_id,omitempty,string"`
 	Amount      string `json:"amount"`
 }
 
@@ -197,15 +202,15 @@ type SetOptions struct {
 // is ChangeTrust.
 type ChangeTrust struct {
 	Base
-	base.Asset
+	base.LiquidityPoolOrAsset
 	Limit          string `json:"limit"`
-	Trustee        string `json:"trustee"`
+	Trustee        string `json:"trustee,omitempty"`
 	Trustor        string `json:"trustor"`
 	TrustorMuxed   string `json:"trustor_muxed,omitempty"`
-	TrustorMuxedID uint64 `json:"trustor_muxed_id,omitempty"`
+	TrustorMuxedID uint64 `json:"trustor_muxed_id,omitempty,string"`
 }
 
-// Deprecated: use TrustlineFlagsUpdated instead.
+// Deprecated: use SetTrustLineFlags instead.
 // AllowTrust is the json resource representing a single operation whose type is
 // AllowTrust.
 type AllowTrust struct {
@@ -213,7 +218,7 @@ type AllowTrust struct {
 	base.Asset
 	Trustee                        string `json:"trustee"`
 	TrusteeMuxed                   string `json:"trustee_muxed,omitempty"`
-	TrusteeMuxedID                 uint64 `json:"trustee_muxed_id,omitempty"`
+	TrusteeMuxedID                 uint64 `json:"trustee_muxed_id,omitempty,string"`
 	Trustor                        string `json:"trustor"`
 	Authorize                      bool   `json:"authorize"`
 	AuthorizeToMaintainLiabilities bool   `json:"authorize_to_maintain_liabilities"`
@@ -225,10 +230,10 @@ type AccountMerge struct {
 	Base
 	Account        string `json:"account"`
 	AccountMuxed   string `json:"account_muxed,omitempty"`
-	AccountMuxedID uint64 `json:"account_muxed_id,omitempty"`
+	AccountMuxedID uint64 `json:"account_muxed_id,omitempty,string"`
 	Into           string `json:"into"`
 	IntoMuxed      string `json:"into_muxed,omitempty"`
-	IntoMuxedID    uint64 `json:"into_muxed_id,omitempty"`
+	IntoMuxedID    uint64 `json:"into_muxed_id,omitempty,string"`
 }
 
 // Inflation is the json resource representing a single operation whose type is
@@ -253,7 +258,7 @@ type ClaimClaimableBalance struct {
 	BalanceID       string `json:"balance_id"`
 	Claimant        string `json:"claimant"`
 	ClaimantMuxed   string `json:"claimant_muxed,omitempty"`
-	ClaimantMuxedID uint64 `json:"claimant_muxed_id,omitempty"`
+	ClaimantMuxedID uint64 `json:"claimant_muxed_id,omitempty,string"`
 }
 
 // BeginSponsoringFutureReserves is the json resource representing a single operation whose type is
@@ -269,22 +274,23 @@ type EndSponsoringFutureReserves struct {
 	Base
 	BeginSponsor        string `json:"begin_sponsor,omitempty"`
 	BeginSponsorMuxed   string `json:"begin_sponsor_muxed,omitempty"`
-	BeginSponsorMuxedID uint64 `json:"begin_sponsor_muxed_id,omitempty"`
+	BeginSponsorMuxedID uint64 `json:"begin_sponsor_muxed_id,omitempty,string"`
 }
 
 // RevokeSponsorship is the json resource representing a single operation whose type is
 // RevokeSponsorship.
 type RevokeSponsorship struct {
 	Base
-	AccountID          *string `json:"account_id,omitempty"`
-	ClaimableBalanceID *string `json:"claimable_balance_id,omitempty"`
-	DataAccountID      *string `json:"data_account_id,omitempty"`
-	DataName           *string `json:"data_name,omitempty"`
-	OfferID            *int64  `json:"offer_id,omitempty,string"`
-	TrustlineAccountID *string `json:"trustline_account_id,omitempty"`
-	TrustlineAsset     *string `json:"trustline_asset,omitempty"`
-	SignerAccountID    *string `json:"signer_account_id,omitempty"`
-	SignerKey          *string `json:"signer_key,omitempty"`
+	AccountID                *string `json:"account_id,omitempty"`
+	ClaimableBalanceID       *string `json:"claimable_balance_id,omitempty"`
+	DataAccountID            *string `json:"data_account_id,omitempty"`
+	DataName                 *string `json:"data_name,omitempty"`
+	OfferID                  *int64  `json:"offer_id,omitempty,string"`
+	TrustlineAccountID       *string `json:"trustline_account_id,omitempty"`
+	TrustlineLiquidityPoolID *string `json:"trustline_liquidity_pool_id,omitempty"`
+	TrustlineAsset           *string `json:"trustline_asset,omitempty"`
+	SignerAccountID          *string `json:"signer_account_id,omitempty"`
+	SignerKey                *string `json:"signer_key,omitempty"`
 }
 
 // Clawback is the json resource representing a single operation whose type is
@@ -294,7 +300,7 @@ type Clawback struct {
 	base.Asset
 	From        string `json:"from"`
 	FromMuxed   string `json:"from_muxed,omitempty"`
-	FromMuxedID uint64 `json:"from_muxed_id,omitempty"`
+	FromMuxedID uint64 `json:"from_muxed_id,omitempty,string"`
 	Amount      string `json:"amount"`
 }
 
@@ -317,13 +323,107 @@ type SetTrustLineFlags struct {
 	ClearFlagsS []string `json:"clear_flags_s,omitempty"`
 }
 
+// LiquidityPoolDeposit is the json resource representing a single operation whose type is
+// LiquidityPoolDeposit.
+type LiquidityPoolDeposit struct {
+	Base
+	LiquidityPoolID   string             `json:"liquidity_pool_id"`
+	ReservesMax       []base.AssetAmount `json:"reserves_max"`
+	MinPrice          string             `json:"min_price"`
+	MinPriceR         base.Price         `json:"min_price_r"`
+	MaxPrice          string             `json:"max_price"`
+	MaxPriceR         base.Price         `json:"max_price_r"`
+	ReservesDeposited []base.AssetAmount `json:"reserves_deposited"`
+	SharesReceived    string             `json:"shares_received"`
+}
+
+// LiquidityPoolWithdraw is the json resource representing a single operation whose type is
+// LiquidityPoolWithdraw.
+type LiquidityPoolWithdraw struct {
+	Base
+	LiquidityPoolID  string             `json:"liquidity_pool_id"`
+	ReservesMin      []base.AssetAmount `json:"reserves_min"`
+	Shares           string             `json:"shares"`
+	ReservesReceived []base.AssetAmount `json:"reserves_received"`
+}
+
+// InvokeHostFunction is the json resource representing a single InvokeHostFunctionOp.
+// The model for InvokeHostFunction assimilates InvokeHostFunctionOp, but is simplified.
+// HostFunction         - contract function invocation to be performed.
+// AssetBalanceChanges  - array of asset balance changed records related to contract invocations in this host invocation.
+//
+//	The asset balance change record is captured at ingestion time from the asset contract
+//	events present in tx meta. Only asset contract events that have a reference to classic account in
+//	either the 'from' or 'to' participants will be included here as an asset balance change.
+//	Any pure contract-to-contract events with no reference to classic accounts are not included,
+//	as there is no explicit model in horizon for contract addresses yet.
+type InvokeHostFunction struct {
+	Base
+	Function            string                       `json:"function"`
+	Parameters          []HostFunctionParameter      `json:"parameters"`
+	Address             string                       `json:"address"`
+	Salt                string                       `json:"salt"`
+	AssetBalanceChanges []AssetContractBalanceChange `json:"asset_balance_changes"`
+}
+
+// InvokeHostFunction parameter model, intentionally simplified, Value
+// just contains a base64 encoded string of the ScVal xdr serialization.
+type HostFunctionParameter struct {
+	Value string `json:"value"`
+	Type  string `json:"type"`
+}
+
+// ExtendFootprintTtl is the json resource representing a single ExtendFootprintTtlOp.
+// The model for ExtendFootprintTtl assimilates ExtendFootprintTtlOp, but is simplified.
+type ExtendFootprintTtl struct {
+	Base
+	ExtendTo uint32 `json:"extend_to"`
+}
+
+// RestoreFootprint is the json resource representing a single RestoreFootprint.
+type RestoreFootprint struct {
+	Base
+}
+
+// Type   - refers to the source SAC Event
+//
+//	it can only be one of 'transfer', 'mint', 'clawback' or 'burn'
+//
+// From   - this is classic account that asset balance was changed,
+//
+//	or absent if not applicable for function
+//
+// To     - this is the classic account that asset balance was changed,
+//
+//	         or absent if not applicable for function
+//
+//		for asset contract event type, it can be absent such as 'burn'
+//
+// Amount - expressed as a signed decimal to 7 digits precision.
+// Asset  - the classic asset expressed as issuer and code.
+// DestinationMuxedId - If the event's destination was a muxed address, then include the uint64 memoId in the response as a string
+type AssetContractBalanceChange struct {
+	base.Asset
+	Type               string `json:"type"`
+	From               string `json:"from,omitempty"`
+	To                 string `json:"to,omitempty"`
+	Amount             string `json:"amount"`
+	DestinationMuxedId string `json:"destination_muxed_id,omitempty"`
+}
+
 // Operation interface contains methods implemented by the operation types
 type Operation interface {
+	GetBase() Base
 	PagingToken() string
 	GetType() string
 	GetID() string
 	GetTransactionHash() string
 	IsTransactionSuccessful() bool
+}
+
+// GetBase returns the base object of operation
+func (base Base) GetBase() Base {
+	return base
 }
 
 // GetType returns the type of operation
@@ -522,6 +622,36 @@ func UnmarshalOperation(operationTypeID int32, dataString []byte) (ops Operation
 		ops = op
 	case xdr.OperationTypeSetTrustLineFlags:
 		var op SetTrustLineFlags
+		if err = json.Unmarshal(dataString, &op); err != nil {
+			return
+		}
+		ops = op
+	case xdr.OperationTypeLiquidityPoolDeposit:
+		var op LiquidityPoolDeposit
+		if err = json.Unmarshal(dataString, &op); err != nil {
+			return
+		}
+		ops = op
+	case xdr.OperationTypeLiquidityPoolWithdraw:
+		var op LiquidityPoolWithdraw
+		if err = json.Unmarshal(dataString, &op); err != nil {
+			return
+		}
+		ops = op
+	case xdr.OperationTypeInvokeHostFunction:
+		var op InvokeHostFunction
+		if err = json.Unmarshal(dataString, &op); err != nil {
+			return
+		}
+		ops = op
+	case xdr.OperationTypeExtendFootprintTtl:
+		var op ExtendFootprintTtl
+		if err = json.Unmarshal(dataString, &op); err != nil {
+			return
+		}
+		ops = op
+	case xdr.OperationTypeRestoreFootprint:
+		var op RestoreFootprint
 		if err = json.Unmarshal(dataString, &op); err != nil {
 			return
 		}
